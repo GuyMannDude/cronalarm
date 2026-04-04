@@ -1,0 +1,9 @@
+# CronAlarm runtime files (these are on user machines, not in repo)
+logs/
+inbox/
+backups/
+env
+
+# OS
+.DS_Store
+Thumbs.db
