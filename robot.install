@@ -1,0 +1,49 @@
+{
+  // CronAlarm — robot.install manifest
+  //
+  // Non-interactive install recipe. Pair with ./robot-install.sh which
+  // wraps the existing install.sh — the heavy lifting lives there.
+  //
+  // CronAlarm's pre-existing install.sh already accepts every channel
+  // config as an env var and supports `--yes` for unattended install.
+  // This manifest is the structured JSON face on top of that.
+
+  "channels": {
+    // Each channel is opt-in. Leave the *_env_var blank to skip that
+    // channel; the installer treats missing env vars as "no setup" and
+    // moves on. Local file drop at ~/.cronalarm/inbox/ is always on.
+
+    "discord": {
+      "enabled": true,
+      "webhook_env": "CRONALARM_DISCORD_WEBHOOK"
+    },
+    "sms": {
+      "enabled": false,
+      "phone_env": "CRONALARM_SMS_PHONE",
+      "key_env": "CRONALARM_SMS_KEY"   // 'textbelt' = free tier (1/day)
+    },
+    "telegram": {
+      "enabled": false,
+      "bot_token_env": "CRONALARM_TELEGRAM_BOT_TOKEN",
+      "chat_id_env": "CRONALARM_TELEGRAM_CHAT_ID"
+    }
+  },
+
+  // Default per-job timeout in seconds. Override per-job at the
+  // wrapper command if needed (CRONALARM_TIMEOUT=600 cronalarm "job" cmd).
+  "timeout_seconds": 300,
+
+  // Where the daily summary cron entry should be installed.
+  // Default 23:00 IGOR-local. Set enabled=false to skip the daily digest.
+  "daily_report": {
+    "enabled": true,
+    "hour": 23,
+    "minute": 0
+  },
+
+  // Smoke test: install a no-op cron job, run it once, confirm the
+  // log entry landed at ~/.cronalarm/logs/<today>.log.
+  "smoke_test": {
+    "enabled": true
+  }
+}

@@ -1,0 +1,28 @@
+# CronAlarm
+
+> The cron wrapper that screams when things break. Every cron job runs through a bash wrapper that captures stdout, stderr, exit code, and runtime. On failure or timeout, it pings Discord webhook, SMS (Textbelt), Telegram, and a local file drop — whichever you've configured. Daily summary at 11 PM. No daemon, no server, no language runtime beyond stock bash + curl.
+
+CronAlarm fixes the silent-failure problem with `cron`. The 3 AM backup that quietly stopped working last week shouldn't be discovered next Tuesday when you need the backup. Wrap every job with `cronalarm "Job Name" /path/to/script.sh` and any non-zero exit or hang past the configurable timeout produces an alert through the channels you've configured.
+
+Multi-channel by design: Discord webhook (recommended), Textbelt SMS (free tier = 1/day, paid ~$0.01/text), Telegram bot, and a local file drop at `~/.cronalarm/inbox/` that's always on regardless of what else is configured. Local file drop is the durability anchor — a Discord outage doesn't make you miss a failure report.
+
+## Docs
+
+- [README](https://github.com/GuyMannDude/cronalarm/blob/master/README.md): Project overview, install steps, how to wrap existing cron jobs.
+- [examples/](https://github.com/GuyMannDude/cronalarm/tree/master/examples): Reference cron scripts showing the wrapper in production use (vital-services-monitor, backup-to-remote, cleanup-old-files).
+
+## Agent Manifests
+
+- [robot.info](https://github.com/GuyMannDude/cronalarm/blob/master/robot.info): Structured product manifest (JSON). Identity, capabilities, all 4 CLI commands, all 8 config env vars, scheduler + channel compatibility matrix, privacy + outbound-call list, and 10 common-question/answer pairs covering "why not MAILTO", what happens on hang, what's logged where, and unattended-install. Read this first if you're an agent answering a user's questions about CronAlarm.
+- [robot.install](https://github.com/GuyMannDude/cronalarm/blob/master/robot.install): Non-interactive install manifest. Pair with `./robot-install.sh` which wraps the existing `install.sh` and emits a single JSON object on stdout (`deps / manifest / install / smoke_test` per-step status). Zero prompts, exit 0 on success.
+
+## Code
+
+- [sparks-cron.sh](https://github.com/GuyMannDude/cronalarm/blob/master/sparks-cron.sh): The wrapper script. Captures output, enforces timeout, fires alerts on failure.
+- [install.sh](https://github.com/GuyMannDude/cronalarm/blob/master/install.sh): Interactive install wizard for channel setup; also accepts unattended-install via env vars + `--yes` flag.
+- [cronalarm-report.sh](https://github.com/GuyMannDude/cronalarm/blob/master/cronalarm-report.sh): Daily summary script (typically run via cron at 11 PM). Reads the day's log and posts a pass/fail digest.
+
+## Related
+
+- [Mnemo Cortex](https://github.com/GuyMannDude/mnemo-cortex): Persistent memory for AI agents. CronAlarm's inbox file drop could feed Mnemo for cross-session failure tracking, but the products work independently.
+- [Disco-Bus](https://github.com/GuyMannDude/disco-bus): Agent messaging mesh. Could pipe CronAlarm failure reports to specific agents via the bus.
