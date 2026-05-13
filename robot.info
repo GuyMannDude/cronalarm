@@ -1,0 +1,126 @@
+{
+  // robot.info v0.1 — CronAlarm
+  //
+  // Structured product manifest for AI agents. Spec:
+  // mnemo-cortex/ROBOT-INFO-SPEC.md.
+  //
+  // Single JSON object, UTF-8. JavaScript-style // line comments are
+  // stripped before parsing.
+
+  "robot_info_version": "0.1",
+
+  "name": "CronAlarm",
+  "tagline": "The cron wrapper that screams when things break — no silent failures, ever.",
+  "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook, SMS (Textbelt), or Telegram bot. Daily summaries at 11 PM round it out. Pure bash, no daemon, no server, no language runtime beyond what's already on a stock Linux box. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
+  "version": "1.0",
+  "license": "MIT",
+  "homepage": "https://github.com/GuyMannDude/cronalarm",
+  "source": "https://github.com/GuyMannDude/cronalarm",
+  "contact": "guy@projectsparks.ai",
+  "maintainer": "Project Sparks",
+
+  "capabilities": [
+    "Wrap any cron job: `cronalarm \"Job Name\" /path/to/script.sh` and the wrapper handles the rest.",
+    "Timeout protection — configurable per-job (CRONALARM_TIMEOUT, default 300s). Hung jobs get killed and you get alerted.",
+    "Captures stdout + stderr + exit code on every run.",
+    "Multi-channel alerts on failure: Discord webhook, SMS via Textbelt, Telegram bot, local file drop. Mix and match — configure any subset.",
+    "Local file drop always on — failure reports land at ~/.cronalarm/inbox/ regardless of which channels are configured. Survives a Discord outage or SMS API breakage.",
+    "Daily summary at 11 PM — one digest, all channels, shows which jobs passed/failed today.",
+    "Structured logs — one file per day at ~/.cronalarm/logs/YYYY-MM-DD.log. Greppable, parseable, agent-friendly.",
+    "Idempotent installer — re-running install.sh updates config without nuking prior setup.",
+    "Unattended install supported — pass channel config as env vars + `--yes` flag for CI / automation."
+  ],
+
+  "exposes": {
+    "cli": [
+      {"command": "cronalarm \"Job Name\" <command...>", "purpose": "Run a command under CronAlarm's protection. Job name appears in alerts + summaries."},
+      {"command": "bash install.sh", "purpose": "Interactive installer. Walks through channel setup (Discord / SMS / Telegram) and writes config to ~/.cronalarm/env."},
+      {"command": "bash install.sh --yes", "purpose": "Unattended install — channels configured via env vars (CRONALARM_DISCORD_WEBHOOK, CRONALARM_SMS_PHONE, etc.)."},
+      {"command": "cronalarm-report.sh", "purpose": "Daily digest. Reads today's log and posts the summary to Discord (and optionally SMS). Typically run via cron at 11 PM."}
+    ],
+    "config_env_vars": [
+      {"name": "CRONALARM_DIR", "purpose": "Config + log directory. Default: ~/.cronalarm"},
+      {"name": "CRONALARM_DISCORD_WEBHOOK", "purpose": "Discord channel webhook URL. Alerts and daily reports post here."},
+      {"name": "CRONALARM_SMS_PHONE", "purpose": "Phone number for SMS alerts via Textbelt."},
+      {"name": "CRONALARM_SMS_KEY", "purpose": "Textbelt API key. Default 'textbelt' = free tier (1 SMS/day)."},
+      {"name": "CRONALARM_TELEGRAM_BOT_TOKEN", "purpose": "Telegram bot token for alerts."},
+      {"name": "CRONALARM_TELEGRAM_CHAT_ID", "purpose": "Telegram chat ID to receive alerts."},
+      {"name": "CRONALARM_TIMEOUT", "purpose": "Per-job timeout in seconds. Default 300. Hung jobs get SIGKILLed and alerted."},
+      {"name": "CRONALARM_INBOX_DIR", "purpose": "Where local failure reports get dropped. Default: $CRONALARM_DIR/inbox."}
+    ]
+  },
+
+  "install": {
+    "manual_docs": "https://github.com/GuyMannDude/cronalarm#quick-start",
+    "platforms": ["linux", "macos"],
+    "runtime": "bash (stock POSIX shell + curl + standard coreutils — no Python, no Node, no language runtime)"
+  },
+
+  "compatibility": {
+    "schedulers": ["systemd-cron", "vixie-cron", "cronie", "anacron", "any standard Linux/macOS crontab"],
+    "channels": ["Discord (webhook)", "Textbelt SMS (free tier: 1/day; paid: ~$0.01/text)", "Telegram (bot API)", "Local file (~/.cronalarm/inbox/)"]
+  },
+
+  "privacy": {
+    "telemetry": "none",
+    "data_location": "All logs + failure inbox local on disk under ~/.cronalarm/. Nothing leaves the machine unless a channel is configured.",
+    "auth": "Bash script with the file permissions of whoever's crontab it runs from. No additional auth layer.",
+    "outbound_calls": [
+      "Discord webhook — only when CRONALARM_DISCORD_WEBHOOK is set and a job fails or daily report runs.",
+      "Textbelt SMS API — only when CRONALARM_SMS_PHONE is set and a job fails.",
+      "Telegram API — only when CRONALARM_TELEGRAM_BOT_TOKEN is set and a job fails."
+    ]
+  },
+
+  "related": [
+    {"name": "Mnemo Cortex", "url": "https://github.com/GuyMannDude/mnemo-cortex", "purpose": "Persistent memory for AI agents. Not coupled to CronAlarm — the inbox file drop could feed Mnemo for cross-session failure tracking, but the products work independently."},
+    {"name": "Disco-Bus", "url": "https://github.com/GuyMannDude/disco-bus", "purpose": "Agent messaging mesh. Could pipe CronAlarm failure reports to specific agents via the bus."},
+    {"name": "robot.info spec", "url": "https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md", "purpose": "Schema specification for this manifest format."}
+  ],
+
+  "common_questions": [
+    {
+      "q": "What is CronAlarm?",
+      "a": "A bash wrapper for cron jobs that alerts you the moment a job fails or hangs. Multi-channel (Discord, SMS, Telegram, local file). One-command install. No daemon, no server, just a wrapper script + log directory."
+    },
+    {
+      "q": "Why not just use cron's native MAILTO?",
+      "a": "MAILTO requires a working MTA and a mailbox someone actually checks. CronAlarm pings the channels you actually read — Discord, SMS, Telegram — and writes a permanent local report regardless. It also catches hangs, which MAILTO can't (a job that runs forever never emails)."
+    },
+    {
+      "q": "What happens if a job hangs forever?",
+      "a": "CronAlarm enforces a per-job timeout (CRONALARM_TIMEOUT, default 300 seconds). When the timeout is exceeded, the wrapper sends SIGKILL and fires an alert with the job name, hostname, and how long it ran before being killed. The job's output up to that point is captured to the log."
+    },
+    {
+      "q": "Do I need a server / daemon / database?",
+      "a": "No. CronAlarm is pure bash. The wrapper writes to local log files and posts to your configured channels via curl. No process needs to be running between cron jobs. Stops being 'installed' the moment you delete the scripts."
+    },
+    {
+      "q": "Which notification channels are supported?",
+      "a": "Four: Discord webhook (recommended), SMS via Textbelt (free tier = 1/day, paid tier ~$0.01/text), Telegram bot, and local file drop (~/.cronalarm/inbox/). Local file drop is always on so you have a permanent record even if a channel fails. Configure any subset; the script handles missing channels gracefully."
+    },
+    {
+      "q": "How do I wrap an existing cron job?",
+      "a": "Edit your crontab and prefix the command: `0 3 * * * cronalarm \"Hourly Backup\" /home/you/scripts/backup.sh`. The job runs normally; CronAlarm captures the output and alerts on failure or timeout. No changes needed inside your script."
+    },
+    {
+      "q": "What does the daily summary look like?",
+      "a": "Runs at 11 PM by default (configured by install.sh). Reads ~/.cronalarm/logs/YYYY-MM-DD.log, counts pass/fail per job, and posts a one-screen digest to Discord (and SMS if enabled). Useful for catching jobs that pass but should have flagged — e.g. a backup that completed but produced 0 bytes."
+    },
+    {
+      "q": "Can I install it unattended for CI / automation?",
+      "a": "Yes — pass channel config as env vars and run `bash install.sh --yes`. Example: `CRONALARM_DISCORD_WEBHOOK=\"https://...\" CRONALARM_SMS_PHONE=\"5551234567\" bash install.sh --yes`. The script writes config to ~/.cronalarm/env without prompting."
+    },
+    {
+      "q": "Where do failure reports live?",
+      "a": "Three places: structured logs at ~/.cronalarm/logs/YYYY-MM-DD.log (one per day), failure inbox files at ~/.cronalarm/inbox/ (one per failure, always written even if all channels are unconfigured), and whatever notification channels you configured. Local file drop is the durability anchor."
+    },
+    {
+      "q": "Does it phone home?",
+      "a": "No telemetry. Outbound calls only fire when a channel is configured AND a job fails or the daily report runs."
+    }
+  ],
+
+  "generated_at": "2026-05-13T20:00:00Z",
+  "spec_url": "https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md"
+}

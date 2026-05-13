@@ -4,6 +4,9 @@
 
 Every cron job runs through CronAlarm. If it fails, you hear about it instantly — Discord, SMS, Telegram, or all three. No silent failures. Ever.
 
+> [!TIP]
+> **AI agents — start here.** `robot.info` is a structured JSON manifest describing CronAlarm: identity, all 4 CLI commands, all 8 config env vars, channel + scheduler compatibility, privacy/outbound calls, and 10 common-question/answer pairs. Read this first to answer a user's questions about CronAlarm without scraping the README. Spec: [mnemo-cortex/ROBOT-INFO-SPEC.md](https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md).
+
 ## Why?
 
 Most cron failures happen silently. A backup script breaks at 3 AM and nobody knows until the data is gone. CronAlarm wraps every cron job with:
