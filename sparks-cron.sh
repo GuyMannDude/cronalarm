@@ -35,6 +35,7 @@ set -euo pipefail
 # ─── Configuration ───
 CRONALARM_DIR="${CRONALARM_DIR:-$HOME/.cronalarm}"
 DISCORD_WEBHOOK="${CRONALARM_DISCORD_WEBHOOK:-}"
+MENTION="${CRONALARM_MENTION:-}"  # optional, e.g. "@here" — prepended to Discord failure alerts
 SMS_PHONE="${CRONALARM_SMS_PHONE:-}"
 SMS_KEY="${CRONALARM_SMS_KEY:-textbelt}"
 TELEGRAM_BOT_TOKEN="${CRONALARM_TELEGRAM_BOT_TOKEN:-}"
@@ -114,7 +115,8 @@ msg = json.dumps({'content': sys.stdin.read()[:2000]})
 req = urllib.request.Request(
     '$DISCORD_WEBHOOK',
     data=msg.encode('utf-8'),
-    headers={'Content-Type': 'application/json'},
+    # Discord/Cloudflare 403s urllib's default user-agent — must send a real one
+    headers={'Content-Type': 'application/json', 'User-Agent': 'CronAlarm/1.1'},
     method='POST'
 )
 try:
@@ -122,7 +124,7 @@ try:
 except Exception as e:
     print(f'Discord alert failed: {e}', file=sys.stderr)
 " <<DISCORD_EOF
-🚨 **CRON FAILURE on ${HOSTNAME}**${TIMEOUT_FLAG}
+${MENTION:+${MENTION} }🚨 **CRON FAILURE on ${HOSTNAME}**${TIMEOUT_FLAG}
 
 **Job:** ${JOB_NAME}
 **Command:** \`${COMMAND}\`

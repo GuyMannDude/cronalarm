@@ -173,25 +173,33 @@ cat > "$ENV_FILE" << ENVEOF
 # CronAlarm Environment — Edit to change settings
 # ═══════════════════════════════════════════════════
 
+# NOTE: every var must be exported — cron runs \`source env && cronalarm ...\`,
+# and without export the wrapper (a child process) sees none of these.
+
 # Discord webhook for failure alerts
-CRONALARM_DISCORD_WEBHOOK="${CURRENT_DISCORD}"
+export CRONALARM_DISCORD_WEBHOOK="${CURRENT_DISCORD}"
+
+# Optional mention prepended to Discord failure alerts (e.g. "@here" or "<@USER_ID>").
+# Set your Discord channel to "Only @mentions" and failures will be the only
+# messages that make a sound — success/info posts stay silent.
+export CRONALARM_MENTION=""
 
 # SMS via Textbelt (free: 1/day with key "textbelt")
 # Get unlimited at https://textbelt.com for \$0.01/text
-CRONALARM_SMS_PHONE="${CURRENT_PHONE}"
-CRONALARM_SMS_KEY="${CURRENT_SMS_KEY}"
+export CRONALARM_SMS_PHONE="${CURRENT_PHONE}"
+export CRONALARM_SMS_KEY="${CURRENT_SMS_KEY}"
 
 # Telegram bot (optional)
-CRONALARM_TELEGRAM_BOT_TOKEN="${CURRENT_TEL_TOKEN}"
-CRONALARM_TELEGRAM_CHAT_ID="${CURRENT_TEL_CHAT}"
+export CRONALARM_TELEGRAM_BOT_TOKEN="${CURRENT_TEL_TOKEN}"
+export CRONALARM_TELEGRAM_CHAT_ID="${CURRENT_TEL_CHAT}"
 
 # Default timeout per job (seconds)
-CRONALARM_TIMEOUT=300
+export CRONALARM_TIMEOUT=300
 
 # Where to drop failure reports (default: ~/.cronalarm/inbox)
 # Set this to your agent's inbox if you use one:
 # CRONALARM_INBOX_DIR="\$HOME/.openclaw/workspace/DESK/inbox"
-CRONALARM_INBOX_DIR="\$HOME/.cronalarm/inbox"
+export CRONALARM_INBOX_DIR="\$HOME/.cronalarm/inbox"
 ENVEOF
 
 echo "  ✅ Config saved to $ENV_FILE"

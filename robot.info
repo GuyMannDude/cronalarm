@@ -12,7 +12,7 @@
   "name": "CronAlarm",
   "tagline": "The cron wrapper that screams when things break — no silent failures, ever.",
   "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook, SMS (Textbelt), or Telegram bot. Daily summaries at 11 PM round it out. Pure bash, no daemon, no server, no language runtime beyond what's already on a stock Linux box. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
-  "version": "1.0",
+  "version": "1.1",
   "license": "MIT",
   "homepage": "https://github.com/GuyMannDude/cronalarm",
   "source": "https://github.com/GuyMannDude/cronalarm",
