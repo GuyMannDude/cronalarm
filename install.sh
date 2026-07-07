@@ -7,7 +7,7 @@
 #    1. cronalarm wrapper (the screamer)
 #    2. All monitoring scripts (if present)
 #    3. Crontab with every job
-#    4. Notification setup (Discord, SMS, Telegram)
+#    4. Notification setup (Discord, Telegram)
 #    5. Log rotation
 #
 #  Usage:
@@ -15,7 +15,6 @@
 #
 #  Or for unattended installs:
 #    CRONALARM_DISCORD_WEBHOOK="https://..." \
-#    CRONALARM_SMS_PHONE="5551234567" \
 #    bash install.sh --yes
 #
 # ═══════════════════════════════════════════════════════════════════
@@ -108,37 +107,6 @@ if [ "$AUTO_YES" != "--yes" ]; then
     echo ""
 fi
 
-# --- SMS ---
-CURRENT_PHONE="${CRONALARM_SMS_PHONE:-}"
-CURRENT_SMS_KEY="${CRONALARM_SMS_KEY:-textbelt}"
-
-if [ "$AUTO_YES" != "--yes" ]; then
-    echo "  📱 SMS Alerts via Textbelt"
-    echo "     Free: 1 text/day | Paid: \$0.01/text (textbelt.com)"
-    echo "     Just needs a phone number — no account required for free tier"
-    echo ""
-    if [ -n "$CURRENT_PHONE" ]; then
-        echo "     Current: $CURRENT_PHONE"
-        read -p "     Keep existing? (y/n): " KEEP_PHONE
-        if [ "$KEEP_PHONE" != "y" ]; then
-            read -p "     Phone number (digits only, Enter to skip): " PHONE_INPUT
-            CURRENT_PHONE="${PHONE_INPUT:-$CURRENT_PHONE}"
-        fi
-    else
-        read -p "     Phone number (digits only, Enter to skip): " PHONE_INPUT
-        CURRENT_PHONE="${PHONE_INPUT:-}"
-    fi
-
-    if [ -n "$CURRENT_PHONE" ]; then
-        echo ""
-        echo "     Free key 'textbelt' = 1 text/day (good for testing)"
-        echo "     Get unlimited at https://textbelt.com for \$0.01/text"
-        read -p "     Textbelt API key (Enter for free tier): " KEY_INPUT
-        CURRENT_SMS_KEY="${KEY_INPUT:-textbelt}"
-    fi
-    echo ""
-fi
-
 # --- Telegram ---
 CURRENT_TEL_TOKEN="${CRONALARM_TELEGRAM_BOT_TOKEN:-}"
 CURRENT_TEL_CHAT="${CRONALARM_TELEGRAM_CHAT_ID:-}"
@@ -184,11 +152,6 @@ export CRONALARM_DISCORD_WEBHOOK="${CURRENT_DISCORD}"
 # messages that make a sound — success/info posts stay silent.
 export CRONALARM_MENTION=""
 
-# SMS via Textbelt (free: 1/day with key "textbelt")
-# Get unlimited at https://textbelt.com for \$0.01/text
-export CRONALARM_SMS_PHONE="${CURRENT_PHONE}"
-export CRONALARM_SMS_KEY="${CURRENT_SMS_KEY}"
-
 # Telegram bot (optional)
 export CRONALARM_TELEGRAM_BOT_TOKEN="${CURRENT_TEL_TOKEN}"
 export CRONALARM_TELEGRAM_CHAT_ID="${CURRENT_TEL_CHAT}"
@@ -208,7 +171,6 @@ echo "  ✅ Config saved to $ENV_FILE"
 echo ""
 echo "  ─── Notification Channels ───"
 [ -n "$CURRENT_DISCORD" ] && echo "  ✅ Discord: configured" || echo "  ⬜ Discord: not set"
-[ -n "$CURRENT_PHONE" ]   && echo "  ✅ SMS:     $CURRENT_PHONE ($CURRENT_SMS_KEY)" || echo "  ⬜ SMS:     not set"
 [ -n "$CURRENT_TEL_TOKEN" ] && echo "  ✅ Telegram: configured" || echo "  ⬜ Telegram: not set"
 echo "  ✅ Local:   always on → $INBOX_DIR"
 echo ""
@@ -230,7 +192,7 @@ echo ""
 EXAMPLE_CRONTAB="# ═══════════════════════════════════════════════════
 # CronAlarm — Managed crontab
 # Every job runs through the cronalarm wrapper
-# Failures → Discord + SMS + Telegram + local inbox
+# Failures → Discord + Telegram + local inbox
 # ═══════════════════════════════════════════════════
 
 SHELL=/bin/bash

@@ -4,7 +4,7 @@
 # ═══════════════════════════════════════════════════════════════════
 #
 #  Runs at 11 PM daily. Reads today's log and sends a summary
-#  to Discord (and optionally SMS) showing which jobs passed/failed.
+#  to Discord showing which jobs passed/failed.
 #
 # ═══════════════════════════════════════════════════════════════════
 
@@ -13,8 +13,6 @@ LOG_DIR="$CRONALARM_DIR/logs"
 DATE_TAG=$(date '+%Y-%m-%d')
 LOG_FILE="$LOG_DIR/${DATE_TAG}.log"
 DISCORD_WEBHOOK="${CRONALARM_DISCORD_WEBHOOK:-}"
-SMS_PHONE="${CRONALARM_SMS_PHONE:-}"
-SMS_KEY="${CRONALARM_SMS_KEY:-textbelt}"
 INBOX_DIR="${CRONALARM_INBOX_DIR:-$CRONALARM_DIR/inbox}"
 HOSTNAME=$(hostname)
 
@@ -76,14 +74,6 @@ try:
 except Exception as e:
     print(f'Discord report failed: {e}', file=sys.stderr)
 " <<< "$REPORT_DISCORD"
-fi
-
-# Send SMS summary only if there were failures
-if [ -n "$SMS_PHONE" ] && { [ "$FAILED" -gt 0 ] || [ "$TIMEOUTS" -gt 0 ]; }; then
-    curl -sf -X POST https://textbelt.com/text \
-        --data-urlencode "phone=${SMS_PHONE}" \
-        --data-urlencode "message=${REPORT_PLAIN:0:160}" \
-        -d "key=${SMS_KEY}" > /dev/null 2>&1 || true
 fi
 
 # Write to inbox

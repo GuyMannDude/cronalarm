@@ -2,7 +2,7 @@
 
 **The cron wrapper that screams when things break.**
 
-Every cron job runs through CronAlarm. If it fails, you hear about it instantly — Discord, SMS, Telegram, or all three. No silent failures. Ever.
+Every cron job runs through CronAlarm. If it fails, you hear about it instantly — Discord, Telegram, or both. No silent failures. Ever.
 
 > [!TIP]
 > **AI agents — start here.** `robot.info` is a structured JSON manifest describing CronAlarm: identity, all 4 CLI commands, all 8 config env vars, channel + scheduler compatibility, privacy/outbound calls, and 10 common-question/answer pairs. Read this first to answer a user's questions about CronAlarm without scraping the README. Spec: [mnemo-cortex/ROBOT-INFO-SPEC.md](https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md).
@@ -12,7 +12,7 @@ Every cron job runs through CronAlarm. If it fails, you hear about it instantly 
 Most cron failures happen silently. A backup script breaks at 3 AM and nobody knows until the data is gone. CronAlarm wraps every cron job with:
 
 - **Timeout protection** — kills hung jobs and alerts you
-- **Multi-channel alerts** — Discord, SMS (via Textbelt), Telegram
+- **Multi-channel alerts** — Discord, Telegram
 - **Local file drops** — failure reports always saved to disk
 - **Daily summaries** — one report at end of day, all channels
 - **Structured logs** — one file per day, easy to grep
@@ -26,7 +26,7 @@ bash install.sh
 ```
 
 The installer walks you through:
-1. Setting up notification channels (Discord, SMS, Telegram)
+1. Setting up notification channels (Discord, Telegram)
 2. Installing the wrapper to `~/scripts/`
 3. Optionally installing an example crontab
 
@@ -46,7 +46,6 @@ Script              Script
 passes              FAILS or HANGS
 │                   │
 │                   ├→ Discord  🚨
-│                   ├→ SMS      📱
 │                   ├→ Telegram ✈️
 │                   └→ Local    📝
 │
@@ -83,17 +82,6 @@ That's it. If the command exits non-zero, every configured channel gets an alert
 2. Create a webhook in your alerts channel
 3. Paste the URL during install (or edit `~/.cronalarm/env`)
 
-### SMS via Textbelt
-
-Just a phone number — no account needed for the free tier.
-
-| Tier | Cost | Limit |
-|------|------|-------|
-| Free | $0 | 1 text/day (key: `textbelt`) |
-| Paid | $0.01/text | Unlimited (get key at [textbelt.com](https://textbelt.com)) |
-
-Daily summary SMS only fires if there were failures — won't spam you on green days.
-
 ### Telegram
 
 1. Create a bot via [@BotFather](https://t.me/botfather)
@@ -113,10 +101,6 @@ All settings live in `~/.cronalarm/env`:
 ```bash
 # Discord
 CRONALARM_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
-
-# SMS
-CRONALARM_SMS_PHONE="5551234567"
-CRONALARM_SMS_KEY="textbelt"          # or your paid API key
 
 # Telegram
 CRONALARM_TELEGRAM_BOT_TOKEN="..."
@@ -193,7 +177,6 @@ For automation or provisioning:
 
 ```bash
 CRONALARM_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..." \
-CRONALARM_SMS_PHONE="5551234567" \
 bash install.sh --yes
 ```
 

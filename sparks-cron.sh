@@ -4,7 +4,7 @@
 # ═══════════════════════════════════════════════════════════════════
 #
 #  Every cron job runs through this wrapper. If it fails, you hear
-#  about it immediately via Discord, SMS, or Telegram. No silent
+#  about it immediately via Discord or Telegram. No silent
 #  failures. Ever.
 #
 #  Usage:
@@ -24,7 +24,6 @@
 #
 #  Notification channels (configure in ~/.cronalarm/env):
 #    - Discord webhook
-#    - SMS via Textbelt (free: 1/day, paid: $0.01/text)
 #    - Telegram bot
 #    - Local file drop (always on)
 #
@@ -36,8 +35,6 @@ set -euo pipefail
 CRONALARM_DIR="${CRONALARM_DIR:-$HOME/.cronalarm}"
 DISCORD_WEBHOOK="${CRONALARM_DISCORD_WEBHOOK:-}"
 MENTION="${CRONALARM_MENTION:-}"  # optional, e.g. "@here" — prepended to Discord failure alerts
-SMS_PHONE="${CRONALARM_SMS_PHONE:-}"
-SMS_KEY="${CRONALARM_SMS_KEY:-textbelt}"
 TELEGRAM_BOT_TOKEN="${CRONALARM_TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_CHAT_ID="${CRONALARM_TELEGRAM_CHAT_ID:-}"
 LOG_DIR="$CRONALARM_DIR/logs"
@@ -97,7 +94,7 @@ if [ $EXIT_CODE -eq 124 ]; then
     echo "[$END_TIMESTAMP] TIMEOUT: $JOB_NAME — killed after ${TIMEOUT}s" >> "$LOG_FILE"
 fi
 
-# ─── Build alert message (plain text for SMS/Telegram) ───
+# ─── Build alert message (plain text for Telegram) ───
 ALERT_PLAIN="CRON FAILURE on ${HOSTNAME}${TIMEOUT_FLAG}
 Job: $JOB_NAME
 Exit: $EXIT_CODE
@@ -140,22 +137,6 @@ DISCORD_EOF
 
     if [ $? -ne 0 ]; then
         echo "[$END_TIMESTAMP] WARN: Discord alert failed" >> "$LOG_FILE"
-    fi
-fi
-
-# ─── SMS via Textbelt ───
-if [ -n "$SMS_PHONE" ]; then
-    SMS_MSG="CronAlarm FAIL: ${JOB_NAME} (exit ${EXIT_CODE}) on ${HOSTNAME} at ${END_TIMESTAMP}${TIMEOUT_FLAG}"
-    SMS_RESULT=$(curl -sf -X POST https://textbelt.com/text \
-        --data-urlencode "phone=${SMS_PHONE}" \
-        --data-urlencode "message=${SMS_MSG:0:160}" \
-        -d "key=${SMS_KEY}" 2>&1) || true
-
-    # Check if textbelt returned success
-    if echo "$SMS_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('success') else 1)" 2>/dev/null; then
-        echo "[$END_TIMESTAMP] SMS:   Alert sent to ${SMS_PHONE}" >> "$LOG_FILE"
-    else
-        echo "[$END_TIMESTAMP] WARN:  SMS alert failed: ${SMS_RESULT:0:200}" >> "$LOG_FILE"
     fi
 fi
 

@@ -1,5 +1,18 @@
 # CronAlarm Changelog
 
+## 1.2 — 2026-07-07 — Remove Textbelt SMS channel
+
+**Problem.** Textbelt disabled free-tier SMS for US numbers, and the paid tier
+is a redundant cost next to a working Discord webhook (fixed in 1.1). Decision
+via bus ping #1111: drop SMS entirely rather than maintain a dead channel.
+
+**Removed.** All Textbelt SMS code and docs: `CRONALARM_SMS_PHONE` /
+`CRONALARM_SMS_KEY` env vars, the SMS send path in the wrapper and the daily
+report, the installer's SMS prompts, and SMS references in README / robot.info
+/ llms.txt. Remaining channels: Discord webhook, Telegram bot, local file drop
+(always on). Existing installs: the wrapper simply ignores leftover SMS vars
+in `~/.cronalarm/env`; delete them at leisure.
+
 ## 1.1 — 2026-07-07 — Fix mute alerting (two bugs); add CRONALARM_MENTION
 
 **Problem 1 — env not exported.** The installer wrote `~/.cronalarm/env` with
