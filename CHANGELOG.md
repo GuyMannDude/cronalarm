@@ -1,5 +1,22 @@
 # CronAlarm Changelog
 
+## 1.3 — 2026-08-01 — Alert-failure WARN branches were unreachable
+
+**Problem.** Both the Discord and Telegram senders caught every delivery
+exception, printed to stderr (which cron swallows), and exited 0 — so the
+`WARN: <channel> alert failed` log lines after them could NEVER fire. A
+failing webhook left a clean log: silent alert loss with no trace. Found by
+firing the path against a deliberately invalid webhook rather than reading
+the code — the log showed no WARN.
+
+**Fix.** The embedded python now exits non-zero on delivery failure, guarded
+with `|| <CHANNEL>_SEND_FAILED=1` on the command (a bare exit would abort the
+whole script under `set -euo pipefail` and skip the WARN *and* everything
+after it — the naive fix made the failure path worse, which only a fired
+test could see). The WARN branches now trigger on the flag. Both channels
+verified by firing against an invalid URL: WARN lands, later channels and
+the local file drop still run.
+
 ## 1.2 — 2026-07-07 — Remove Textbelt SMS channel
 
 **Problem.** Textbelt disabled free-tier SMS for US numbers, and the paid tier

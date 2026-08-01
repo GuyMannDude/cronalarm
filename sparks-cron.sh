@@ -105,6 +105,10 @@ Output: ${OUTPUT:0:300}"
 # ─── Discord (markdown) ───
 if [ -n "$DISCORD_WEBHOOK" ]; then
     # Use python3 for safe JSON encoding — no shell string injection
+    # `|| DISCORD_SEND_FAILED=1` (not a bare $? check): this script runs under
+    # set -e, so an unguarded non-zero python exit would abort right here and
+    # skip the WARN log line below.
+    DISCORD_SEND_FAILED=0
     python3 -c "
 import json, sys, urllib.request
 
@@ -120,7 +124,11 @@ try:
     urllib.request.urlopen(req, timeout=10)
 except Exception as e:
     print(f'Discord alert failed: {e}', file=sys.stderr)
-" <<DISCORD_EOF
+    # Exit non-zero so the WARN branch below is reachable. Before this, the
+    # exception was swallowed and python exited 0, so 'WARN: Discord alert
+    # failed' could never be logged — silent alert loss left a clean log.
+    sys.exit(1)
+" <<DISCORD_EOF || DISCORD_SEND_FAILED=1
 ${MENTION:+${MENTION} }🚨 **CRON FAILURE on ${HOSTNAME}**${TIMEOUT_FLAG}
 
 **Job:** ${JOB_NAME}
@@ -135,13 +143,14 @@ ${OUTPUT:0:1500}
 \`\`\`
 DISCORD_EOF
 
-    if [ $? -ne 0 ]; then
+    if [ "$DISCORD_SEND_FAILED" -ne 0 ]; then
         echo "[$END_TIMESTAMP] WARN: Discord alert failed" >> "$LOG_FILE"
     fi
 fi
 
 # ─── Telegram ───
 if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    TELEGRAM_SEND_FAILED=0
     python3 -c "
 import json, sys, urllib.request, urllib.parse
 
@@ -159,14 +168,15 @@ try:
     urllib.request.urlopen(req, timeout=10)
 except Exception as e:
     print(f'Telegram alert failed: {e}', file=sys.stderr)
-" <<TEL_EOF
+    sys.exit(1)
+" <<TEL_EOF || TELEGRAM_SEND_FAILED=1
 🚨 *CRON FAILURE on ${HOSTNAME}*${TIMEOUT_FLAG}
 *Job:* ${JOB_NAME}
 *Exit:* ${EXIT_CODE} | *Duration:* ${DURATION}s
 *Time:* ${END_TIMESTAMP}
 TEL_EOF
 
-    if [ $? -ne 0 ]; then
+    if [ "$TELEGRAM_SEND_FAILED" -ne 0 ]; then
         echo "[$END_TIMESTAMP] WARN: Telegram alert failed" >> "$LOG_FILE"
     fi
 fi
