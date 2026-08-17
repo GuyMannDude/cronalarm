@@ -124,30 +124,6 @@ if disc.get("enabled"):
         emit_export(env_var, val)
         enabled.append("discord")
 
-# SMS
-sms = channels.get("sms") or {}
-if sms.get("enabled"):
-    phone_env = sms.get("phone_env", "CRONALARM_SMS_PHONE")
-    key_env = sms.get("key_env", "CRONALARM_SMS_KEY")
-    phone = os.environ.get(phone_env, "")
-    key = os.environ.get(key_env, "textbelt")
-    if phone:
-        emit_export("CRONALARM_SMS_PHONE", phone)
-        emit_export("CRONALARM_SMS_KEY", key)
-        enabled.append("sms")
-
-# Telegram
-tg = channels.get("telegram") or {}
-if tg.get("enabled"):
-    bot_env = tg.get("bot_token_env", "CRONALARM_TELEGRAM_BOT_TOKEN")
-    chat_env = tg.get("chat_id_env", "CRONALARM_TELEGRAM_CHAT_ID")
-    bot = os.environ.get(bot_env, "")
-    chat = os.environ.get(chat_env, "")
-    if bot and chat:
-        emit_export("CRONALARM_TELEGRAM_BOT_TOKEN", bot)
-        emit_export("CRONALARM_TELEGRAM_CHAT_ID", chat)
-        enabled.append("telegram")
-
 # Timeout
 timeout = data.get("timeout_seconds")
 if timeout:

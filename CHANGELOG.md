@@ -1,5 +1,20 @@
 # CronAlarm Changelog
 
+## 1.4 — 2026-08-17 — Repo catches up with the live Telegram removal
+
+**Problem.** The live install dropped the Telegram channel on 2026-07-25, but
+the repo never got the matching sweep — so `install.sh` would resurrect the
+channel on a reinstall, and the docs (README, robot.info, llms.txt) still
+advertised it. The robot-install files also still carried config plumbing for
+the SMS channel removed in 1.2: dead vars the wrapper hasn't read since July,
+advertising channels that don't exist.
+
+**Fix.** Telegram removed from the wrapper, installer, docs, and robot
+manifests, matching the 1.2 SMS sweep; the SMS leftovers in
+`robot.install`/`robot-install.sh` went in the same pass. Channels are now
+Discord webhook + local file drop, and the repo matches the live install.
+Also removed `ALERT_PLAIN`, a Telegram-era variable nothing consumed.
+
 ## 1.3 — 2026-08-01 — Alert-failure WARN branches were unreachable
 
 **Problem.** Both the Discord and Telegram senders caught every delivery

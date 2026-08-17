@@ -16,16 +16,6 @@
     "discord": {
       "enabled": true,
       "webhook_env": "CRONALARM_DISCORD_WEBHOOK"
-    },
-    "sms": {
-      "enabled": false,
-      "phone_env": "CRONALARM_SMS_PHONE",
-      "key_env": "CRONALARM_SMS_KEY"   // 'textbelt' = free tier (1/day)
-    },
-    "telegram": {
-      "enabled": false,
-      "bot_token_env": "CRONALARM_TELEGRAM_BOT_TOKEN",
-      "chat_id_env": "CRONALARM_TELEGRAM_CHAT_ID"
     }
   },
 

@@ -1,10 +1,10 @@
 # CronAlarm
 
-> The cron wrapper that screams when things break. Every cron job runs through a bash wrapper that captures stdout, stderr, exit code, and runtime. On failure or timeout, it pings Discord webhook, Telegram, and a local file drop — whichever you've configured. Daily summary at 11 PM. No daemon, no server, no language runtime beyond stock bash + curl.
+> The cron wrapper that screams when things break. Every cron job runs through a bash wrapper that captures stdout, stderr, exit code, and runtime. On failure or timeout, it pings your Discord webhook and writes a local file drop. Daily summary at 11 PM. No daemon, no server, no language runtime beyond stock bash + curl.
 
 CronAlarm fixes the silent-failure problem with `cron`. The 3 AM backup that quietly stopped working last week shouldn't be discovered next Tuesday when you need the backup. Wrap every job with `cronalarm "Job Name" /path/to/script.sh` and any non-zero exit or hang past the configurable timeout produces an alert through the channels you've configured.
 
-Multi-channel by design: Discord webhook (recommended), Telegram bot, and a local file drop at `~/.cronalarm/inbox/` that's always on regardless of what else is configured. Local file drop is the durability anchor — a Discord outage doesn't make you miss a failure report.
+Two channels: a Discord webhook (recommended) and a local file drop at `~/.cronalarm/inbox/` that's always on regardless of what else is configured. Local file drop is the durability anchor — a Discord outage doesn't make you miss a failure report.
 
 ## Docs
 

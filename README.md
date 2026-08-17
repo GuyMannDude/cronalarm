@@ -2,17 +2,17 @@
 
 **The cron wrapper that screams when things break.**
 
-Every cron job runs through CronAlarm. If it fails, you hear about it instantly — Discord, Telegram, or both. No silent failures. Ever.
+Every cron job runs through CronAlarm. If it fails, you hear about it instantly on Discord. No silent failures. Ever.
 
 > [!TIP]
-> **AI agents — start here.** `robot.info` is a structured JSON manifest describing CronAlarm: identity, all 4 CLI commands, all 8 config env vars, channel + scheduler compatibility, privacy/outbound calls, and 10 common-question/answer pairs. Read this first to answer a user's questions about CronAlarm without scraping the README. Spec: [mnemo-cortex/ROBOT-INFO-SPEC.md](https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md).
+> **AI agents — start here.** `robot.info` is a structured JSON manifest describing CronAlarm: identity, all 4 CLI commands, all 5 config env vars, channel + scheduler compatibility, privacy/outbound calls, and 10 common-question/answer pairs. Read this first to answer a user's questions about CronAlarm without scraping the README. Spec: [mnemo-cortex/ROBOT-INFO-SPEC.md](https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md).
 
 ## Why?
 
 Most cron failures happen silently. A backup script breaks at 3 AM and nobody knows until the data is gone. CronAlarm wraps every cron job with:
 
 - **Timeout protection** — kills hung jobs and alerts you
-- **Multi-channel alerts** — Discord, Telegram
+- **Discord alerts** — instant failure pings via webhook
 - **Local file drops** — failure reports always saved to disk
 - **Daily summaries** — one report at end of day, all channels
 - **Structured logs** — one file per day, easy to grep
@@ -26,7 +26,7 @@ bash install.sh
 ```
 
 The installer walks you through:
-1. Setting up notification channels (Discord, Telegram)
+1. Setting up notifications (Discord)
 2. Installing the wrapper to `~/scripts/`
 3. Optionally installing an example crontab
 
@@ -46,7 +46,6 @@ Script              Script
 passes              FAILS or HANGS
 │                   │
 │                   ├→ Discord  🚨
-│                   ├→ Telegram ✈️
 │                   └→ Local    📝
 │
 └→ Log only ✅
@@ -82,12 +81,6 @@ That's it. If the command exits non-zero, every configured channel gets an alert
 2. Create a webhook in your alerts channel
 3. Paste the URL during install (or edit `~/.cronalarm/env`)
 
-### Telegram
-
-1. Create a bot via [@BotFather](https://t.me/botfather)
-2. Get your chat ID via [@userinfobot](https://t.me/userinfobot)
-3. Enter both during install
-
 ### Local File Drop (always on)
 
 Every failure writes a markdown report to `~/.cronalarm/inbox/`. Useful if you have an agent or automation that watches a directory.
@@ -101,10 +94,6 @@ All settings live in `~/.cronalarm/env`:
 ```bash
 # Discord
 CRONALARM_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
-
-# Telegram
-CRONALARM_TELEGRAM_BOT_TOKEN="..."
-CRONALARM_TELEGRAM_CHAT_ID="..."
 
 # Job timeout (seconds, default 300)
 CRONALARM_TIMEOUT=300

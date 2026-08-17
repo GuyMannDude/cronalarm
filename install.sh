@@ -7,7 +7,7 @@
 #    1. cronalarm wrapper (the screamer)
 #    2. All monitoring scripts (if present)
 #    3. Crontab with every job
-#    4. Notification setup (Discord, Telegram)
+#    4. Notification setup (Discord)
 #    5. Log rotation
 #
 #  Usage:
@@ -107,34 +107,6 @@ if [ "$AUTO_YES" != "--yes" ]; then
     echo ""
 fi
 
-# --- Telegram ---
-CURRENT_TEL_TOKEN="${CRONALARM_TELEGRAM_BOT_TOKEN:-}"
-CURRENT_TEL_CHAT="${CRONALARM_TELEGRAM_CHAT_ID:-}"
-
-if [ "$AUTO_YES" != "--yes" ]; then
-    echo "  ✈️  Telegram (optional)"
-    if [ -n "$CURRENT_TEL_TOKEN" ]; then
-        echo "     Current bot configured. Keep? (y/n)"
-        read -p "     " KEEP_TEL
-        if [ "$KEEP_TEL" != "y" ]; then
-            read -p "     Bot token (Enter to skip): " TEL_TOKEN_INPUT
-            CURRENT_TEL_TOKEN="${TEL_TOKEN_INPUT:-$CURRENT_TEL_TOKEN}"
-            if [ -n "$CURRENT_TEL_TOKEN" ]; then
-                read -p "     Chat ID: " TEL_CHAT_INPUT
-                CURRENT_TEL_CHAT="${TEL_CHAT_INPUT:-$CURRENT_TEL_CHAT}"
-            fi
-        fi
-    else
-        read -p "     Bot token (Enter to skip): " TEL_TOKEN_INPUT
-        CURRENT_TEL_TOKEN="${TEL_TOKEN_INPUT:-}"
-        if [ -n "$CURRENT_TEL_TOKEN" ]; then
-            read -p "     Chat ID: " TEL_CHAT_INPUT
-            CURRENT_TEL_CHAT="${TEL_CHAT_INPUT:-}"
-        fi
-    fi
-    echo ""
-fi
-
 # ─── Write environment file ───
 cat > "$ENV_FILE" << ENVEOF
 # ═══════════════════════════════════════════════════
@@ -152,10 +124,6 @@ export CRONALARM_DISCORD_WEBHOOK="${CURRENT_DISCORD}"
 # messages that make a sound — success/info posts stay silent.
 export CRONALARM_MENTION=""
 
-# Telegram bot (optional)
-export CRONALARM_TELEGRAM_BOT_TOKEN="${CURRENT_TEL_TOKEN}"
-export CRONALARM_TELEGRAM_CHAT_ID="${CURRENT_TEL_CHAT}"
-
 # Default timeout per job (seconds)
 export CRONALARM_TIMEOUT=300
 
@@ -171,7 +139,6 @@ echo "  ✅ Config saved to $ENV_FILE"
 echo ""
 echo "  ─── Notification Channels ───"
 [ -n "$CURRENT_DISCORD" ] && echo "  ✅ Discord: configured" || echo "  ⬜ Discord: not set"
-[ -n "$CURRENT_TEL_TOKEN" ] && echo "  ✅ Telegram: configured" || echo "  ⬜ Telegram: not set"
 echo "  ✅ Local:   always on → $INBOX_DIR"
 echo ""
 
@@ -192,7 +159,7 @@ echo ""
 EXAMPLE_CRONTAB="# ═══════════════════════════════════════════════════
 # CronAlarm — Managed crontab
 # Every job runs through the cronalarm wrapper
-# Failures → Discord + Telegram + local inbox
+# Failures → Discord + local inbox
 # ═══════════════════════════════════════════════════
 
 SHELL=/bin/bash

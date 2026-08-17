@@ -4,8 +4,7 @@
 # ═══════════════════════════════════════════════════════════════════
 #
 #  Every cron job runs through this wrapper. If it fails, you hear
-#  about it immediately via Discord or Telegram. No silent
-#  failures. Ever.
+#  about it immediately via Discord. No silent failures. Ever.
 #
 #  Usage:
 #    cronalarm <job-name> <command...>
@@ -24,7 +23,6 @@
 #
 #  Notification channels (configure in ~/.cronalarm/env):
 #    - Discord webhook
-#    - Telegram bot
 #    - Local file drop (always on)
 #
 # ═══════════════════════════════════════════════════════════════════
@@ -35,8 +33,6 @@ set -euo pipefail
 CRONALARM_DIR="${CRONALARM_DIR:-$HOME/.cronalarm}"
 DISCORD_WEBHOOK="${CRONALARM_DISCORD_WEBHOOK:-}"
 MENTION="${CRONALARM_MENTION:-}"  # optional, e.g. "@here" — prepended to Discord failure alerts
-TELEGRAM_BOT_TOKEN="${CRONALARM_TELEGRAM_BOT_TOKEN:-}"
-TELEGRAM_CHAT_ID="${CRONALARM_TELEGRAM_CHAT_ID:-}"
 LOG_DIR="$CRONALARM_DIR/logs"
 TIMEOUT="${CRONALARM_TIMEOUT:-300}"
 HOSTNAME=$(hostname)
@@ -94,14 +90,6 @@ if [ $EXIT_CODE -eq 124 ]; then
     echo "[$END_TIMESTAMP] TIMEOUT: $JOB_NAME — killed after ${TIMEOUT}s" >> "$LOG_FILE"
 fi
 
-# ─── Build alert message (plain text for Telegram) ───
-ALERT_PLAIN="CRON FAILURE on ${HOSTNAME}${TIMEOUT_FLAG}
-Job: $JOB_NAME
-Exit: $EXIT_CODE
-Duration: ${DURATION}s
-Time: $END_TIMESTAMP
-Output: ${OUTPUT:0:300}"
-
 # ─── Discord (markdown) ───
 if [ -n "$DISCORD_WEBHOOK" ]; then
     # Use python3 for safe JSON encoding — no shell string injection
@@ -145,39 +133,6 @@ DISCORD_EOF
 
     if [ "$DISCORD_SEND_FAILED" -ne 0 ]; then
         echo "[$END_TIMESTAMP] WARN: Discord alert failed" >> "$LOG_FILE"
-    fi
-fi
-
-# ─── Telegram ───
-if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-    TELEGRAM_SEND_FAILED=0
-    python3 -c "
-import json, sys, urllib.request, urllib.parse
-
-msg = sys.stdin.read()[:4000]
-params = urllib.parse.urlencode({
-    'chat_id': '$TELEGRAM_CHAT_ID',
-    'text': msg,
-    'parse_mode': 'Markdown'
-}).encode()
-req = urllib.request.Request(
-    'https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage',
-    data=params, method='POST'
-)
-try:
-    urllib.request.urlopen(req, timeout=10)
-except Exception as e:
-    print(f'Telegram alert failed: {e}', file=sys.stderr)
-    sys.exit(1)
-" <<TEL_EOF || TELEGRAM_SEND_FAILED=1
-🚨 *CRON FAILURE on ${HOSTNAME}*${TIMEOUT_FLAG}
-*Job:* ${JOB_NAME}
-*Exit:* ${EXIT_CODE} | *Duration:* ${DURATION}s
-*Time:* ${END_TIMESTAMP}
-TEL_EOF
-
-    if [ "$TELEGRAM_SEND_FAILED" -ne 0 ]; then
-        echo "[$END_TIMESTAMP] WARN: Telegram alert failed" >> "$LOG_FILE"
     fi
 fi
 

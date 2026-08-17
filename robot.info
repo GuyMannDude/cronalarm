@@ -11,8 +11,8 @@
 
   "name": "CronAlarm",
   "tagline": "The cron wrapper that screams when things break — no silent failures, ever.",
-  "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook or Telegram bot. Daily summaries at 11 PM round it out. Pure bash, no daemon, no server, no language runtime beyond what's already on a stock Linux box. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
-  "version": "1.2",
+  "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook. Daily summaries at 11 PM round it out. Pure bash, no daemon, no server, no language runtime beyond what's already on a stock Linux box. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
+  "version": "1.4",
   "license": "MIT",
   "homepage": "https://github.com/GuyMannDude/cronalarm",
   "source": "https://github.com/GuyMannDude/cronalarm",
@@ -23,7 +23,7 @@
     "Wrap any cron job: `cronalarm \"Job Name\" /path/to/script.sh` and the wrapper handles the rest.",
     "Timeout protection — configurable per-job (CRONALARM_TIMEOUT, default 300s). Hung jobs get killed and you get alerted.",
     "Captures stdout + stderr + exit code on every run.",
-    "Multi-channel alerts on failure: Discord webhook, Telegram bot, local file drop. Mix and match — configure any subset.",
+    "Alerts on failure: Discord webhook + local file drop.",
     "Local file drop always on — failure reports land at ~/.cronalarm/inbox/ regardless of which channels are configured. Survives a Discord outage.",
     "Daily summary at 11 PM — one digest, all channels, shows which jobs passed/failed today.",
     "Structured logs — one file per day at ~/.cronalarm/logs/YYYY-MM-DD.log. Greppable, parseable, agent-friendly.",
@@ -34,16 +34,14 @@
   "exposes": {
     "cli": [
       {"command": "cronalarm \"Job Name\" <command...>", "purpose": "Run a command under CronAlarm's protection. Job name appears in alerts + summaries."},
-      {"command": "bash install.sh", "purpose": "Interactive installer. Walks through channel setup (Discord / Telegram) and writes config to ~/.cronalarm/env."},
-      {"command": "bash install.sh --yes", "purpose": "Unattended install — channels configured via env vars (CRONALARM_DISCORD_WEBHOOK, CRONALARM_TELEGRAM_BOT_TOKEN, etc.)."},
+      {"command": "bash install.sh", "purpose": "Interactive installer. Walks through channel setup (Discord) and writes config to ~/.cronalarm/env."},
+      {"command": "bash install.sh --yes", "purpose": "Unattended install — channels configured via env vars (CRONALARM_DISCORD_WEBHOOK, etc.)."},
       {"command": "cronalarm-report.sh", "purpose": "Daily digest. Reads today's log and posts the summary to Discord. Typically run via cron at 11 PM."}
     ],
     "config_env_vars": [
       {"name": "CRONALARM_DIR", "purpose": "Config + log directory. Default: ~/.cronalarm"},
       {"name": "CRONALARM_DISCORD_WEBHOOK", "purpose": "Discord channel webhook URL. Alerts and daily reports post here."},
       {"name": "CRONALARM_MENTION", "purpose": "Optional mention (e.g. '@here') prepended to Discord failure alerts — pair with the channel's 'Only @mentions' setting so only failures make a sound."},
-      {"name": "CRONALARM_TELEGRAM_BOT_TOKEN", "purpose": "Telegram bot token for alerts."},
-      {"name": "CRONALARM_TELEGRAM_CHAT_ID", "purpose": "Telegram chat ID to receive alerts."},
       {"name": "CRONALARM_TIMEOUT", "purpose": "Per-job timeout in seconds. Default 300. Hung jobs get SIGKILLed and alerted."},
       {"name": "CRONALARM_INBOX_DIR", "purpose": "Where local failure reports get dropped. Default: $CRONALARM_DIR/inbox."}
     ]
@@ -57,7 +55,7 @@
 
   "compatibility": {
     "schedulers": ["systemd-cron", "vixie-cron", "cronie", "anacron", "any standard Linux/macOS crontab"],
-    "channels": ["Discord (webhook)", "Telegram (bot API)", "Local file (~/.cronalarm/inbox/)"]
+    "channels": ["Discord (webhook)", "Local file (~/.cronalarm/inbox/)"]
   },
 
   "privacy": {
@@ -65,8 +63,7 @@
     "data_location": "All logs + failure inbox local on disk under ~/.cronalarm/. Nothing leaves the machine unless a channel is configured.",
     "auth": "Bash script with the file permissions of whoever's crontab it runs from. No additional auth layer.",
     "outbound_calls": [
-      "Discord webhook — only when CRONALARM_DISCORD_WEBHOOK is set and a job fails or daily report runs.",
-      "Telegram API — only when CRONALARM_TELEGRAM_BOT_TOKEN is set and a job fails."
+      "Discord webhook — only when CRONALARM_DISCORD_WEBHOOK is set and a job fails or daily report runs."
     ]
   },
 
@@ -79,11 +76,11 @@
   "common_questions": [
     {
       "q": "What is CronAlarm?",
-      "a": "A bash wrapper for cron jobs that alerts you the moment a job fails or hangs. Multi-channel (Discord, Telegram, local file). One-command install. No daemon, no server, just a wrapper script + log directory."
+      "a": "A bash wrapper for cron jobs that alerts you the moment a job fails or hangs. Alerts via Discord + a local file drop. One-command install. No daemon, no server, just a wrapper script + log directory."
     },
     {
       "q": "Why not just use cron's native MAILTO?",
-      "a": "MAILTO requires a working MTA and a mailbox someone actually checks. CronAlarm pings the channels you actually read — Discord, Telegram — and writes a permanent local report regardless. It also catches hangs, which MAILTO can't (a job that runs forever never emails)."
+      "a": "MAILTO requires a working MTA and a mailbox someone actually checks. CronAlarm pings the channel you actually read — Discord — and writes a permanent local report regardless. It also catches hangs, which MAILTO can't (a job that runs forever never emails)."
     },
     {
       "q": "What happens if a job hangs forever?",
@@ -95,7 +92,7 @@
     },
     {
       "q": "Which notification channels are supported?",
-      "a": "Three: Discord webhook (recommended), Telegram bot, and local file drop (~/.cronalarm/inbox/). Local file drop is always on so you have a permanent record even if a channel fails. Configure any subset; the script handles missing channels gracefully."
+      "a": "Two: Discord webhook (recommended) and local file drop (~/.cronalarm/inbox/). Local file drop is always on so you have a permanent record even if a channel fails. The script handles a missing webhook gracefully."
     },
     {
       "q": "How do I wrap an existing cron job?",
@@ -119,6 +116,6 @@
     }
   ],
 
-  "generated_at": "2026-05-13T20:00:00Z",
+  "generated_at": "2026-08-17T00:00:00Z",
   "spec_url": "https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md"
 }
