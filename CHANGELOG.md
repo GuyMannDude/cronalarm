@@ -1,5 +1,28 @@
 # CronAlarm Changelog
 
+## 1.5 — 2026-08-17 — A timeout counted as two completions, and the balance line could never say so
+
+**Problem.** A timed-out job wrote both `FAIL:` and `TIMEOUT:` lines, so the
+daily report counted one job as two completions — and because in-flight was
+the derived remainder (`total - completions`), the error was silently
+absorbed there and the accounting line still balanced. A reconciliation that
+balances by construction is reassurance, not a check. (Found via Opie #2338;
+on 2026-08-10 the report said 5 in flight when the true number was 6.)
+
+**Fix.** Two halves, either alone insufficient:
+1. The wrapper writes ONE completion line per job — `TIMEOUT:` for exit 124,
+   `FAIL:` otherwise. Timeouts get their own name listing in the report so
+   they stay visible without a FAIL line.
+2. The report now measures in-flight independently (per job name: starts
+   minus completions) and compares it to the derived remainder. Disagreement
+   or an over-completed job forces `COUNTER MISMATCH`, never green — so the
+   next double-log class, whatever it is, surfaces instead of vanishing.
+   Counts are also anchored to the log timestamp format so job output
+   containing "FAIL:" can't inflate them.
+
+Gate honored (Opie #2338): a fixture with a deliberate double-count must
+make the accounting FAIL — verified, along with the healthy-log pass case.
+
 ## 1.4 — 2026-08-17 — Repo catches up with the live Telegram removal
 
 **Problem.** The live install dropped the Telegram channel on 2026-07-25, but

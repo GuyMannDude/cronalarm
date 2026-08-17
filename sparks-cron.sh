@@ -80,15 +80,17 @@ fi
 #  FAILURE PATH — SCREAM ON EVERY CHANNEL
 # ═══════════════════════════════════════════════════
 
-echo "[$END_TIMESTAMP] FAIL:  $JOB_NAME — exit=$EXIT_CODE (${DURATION}s)" >> "$LOG_FILE"
-echo "  Output: ${OUTPUT:0:500}" >> "$LOG_FILE"
-
-# Detect timeout specifically
+# ONE completion line per job. A timeout used to write FAIL: and then
+# TIMEOUT: as a second line, so every timed-out job counted as two
+# completions in the daily report and silently absorbed one in-flight job.
 TIMEOUT_FLAG=""
 if [ $EXIT_CODE -eq 124 ]; then
     TIMEOUT_FLAG=" [TIMEOUT after ${TIMEOUT}s]"
-    echo "[$END_TIMESTAMP] TIMEOUT: $JOB_NAME — killed after ${TIMEOUT}s" >> "$LOG_FILE"
+    echo "[$END_TIMESTAMP] TIMEOUT: $JOB_NAME — killed after ${TIMEOUT}s (exit=124)" >> "$LOG_FILE"
+else
+    echo "[$END_TIMESTAMP] FAIL:  $JOB_NAME — exit=$EXIT_CODE (${DURATION}s)" >> "$LOG_FILE"
 fi
+echo "  Output: ${OUTPUT:0:500}" >> "$LOG_FILE"
 
 # ─── Discord (markdown) ───
 if [ -n "$DISCORD_WEBHOOK" ]; then
