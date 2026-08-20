@@ -1,5 +1,29 @@
 # CronAlarm Changelog
 
+## 1.6 — 2026-08-19 — The daily report answered "did anything break today?" when the reader asks "is anything broken now?"
+
+**Problem.** Two defects in the daily report, both found on the same real day
+(2026-08-18). First, a calendar-day sum has no concept of "fixed since": both
+of the day's failure causes were repaired by mid-afternoon and the machine was
+clean for ~8 hours, yet the 23:00 report still said ISSUES — an alarm that is
+correct and useless trains the reader to skim past it. Second, the failure
+list kept the first 10 *occurrences*: all ten printed were the same repeated
+job, and the day's only singleton failure — a different job with a different
+owner — fell below the cut. Frequency is not importance.
+
+**Fix.** A per-job pass tags every failing job with its last completion of
+the day. Every failure cleared by a later pass → new 🟡 `RECOVERED` status:
+amber, never green, with counts and the full per-job list preserved (clearing
+the banner is not erasing the day). A fail→pass→fail job stays red — only
+final state counts. Any job still red → `ISSUES` plus `N job(s) still red at
+report time`. The occurrence-capped listing is replaced by one line per
+distinct failing job with a ×count and its recovery state
+(`Sentinel ×26 — last bad 17:45 · recovered (1 OK since)`), never truncated —
+a singleton can no longer be hidden by a noisy neighbor. If the per-job pass
+itself produces nothing, every failure is treated as still red: "recovered"
+is never inferred from absence of evidence. `COUNTER MISMATCH` and
+`ALL CLEAR` behavior unchanged.
+
 ## 1.5 — 2026-08-17 — A timeout counted as two completions, and the balance line could never say so
 
 **Problem.** A timed-out job wrote both `FAIL:` and `TIMEOUT:` lines, so the

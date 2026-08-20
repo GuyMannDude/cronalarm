@@ -54,6 +54,44 @@ read -r IN_FLIGHT_MEASURED OVER_COMPLETED <<< "$(awk '
 IN_FLIGHT_MEASURED=${IN_FLIGHT_MEASURED:-0}
 OVER_COMPLETED=${OVER_COMPLETED:-0}
 
+# STATE, NOT JUST HISTORY (1.6). A calendar-day sum answers "did anything
+# break today?" but the reader asks "is anything broken NOW?" Tag every
+# failing job with its LAST completion of the day: all recovered → amber
+# RECOVERED (never green — the reds happened and stay listed); anything
+# still red → ISSUES. A fail→pass→fail job stays red: only final state
+# counts. First line of output is the still-failing count, then one line
+# per failing job — truncation by distinct job, never by occurrence, so
+# a singleton failure can never fall below a "first N" cut.
+JOB_STATE=$(awk '
+    match($0, /^\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\] OK:    /) {
+        n = substr($0, RSTART + RLENGTH); sub(/ \([0-9]+s\)$/, "", n)
+        last[n] = "OK"; oksince[n]++; next }
+    match($0, /^\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\] FAIL:  /) {
+        t = substr($0, 13, 5)
+        n = substr($0, RSTART + RLENGTH); sub(/ — exit=.*/, "", n)
+        bad[n]++; last[n] = "FAIL"; lastbad[n] = t; oksince[n] = 0; next }
+    match($0, /^\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\] TIMEOUT: /) {
+        t = substr($0, 13, 5)
+        n = substr($0, RSTART + RLENGTH); sub(/ — killed .*/, "", n)
+        bad[n]++; last[n] = "TIMEOUT"; lastbad[n] = t; oksince[n] = 0; next }
+    END {
+        still = 0
+        for (n in bad) if (last[n] != "OK") still++
+        print still
+        for (n in bad) {
+            state = (last[n] == "OK") \
+                ? "recovered (" oksince[n] " OK since)" \
+                : "STILL " last[n] " at report time"
+            printf "  - %s ×%d — last bad %s · %s\n", n, bad[n], lastbad[n], state
+        }
+    }' "$LOG_FILE")
+STILL_FAILING=$(printf '%s\n' "$JOB_STATE" | head -1)
+STILL_FAILING=${STILL_FAILING:-0}
+# Fail RED, not amber: if awk died and produced nothing (or garbage),
+# "recovered" must not be inferred from absence of evidence.
+case "$STILL_FAILING" in ''|*[!0-9]*) STILL_FAILING=$(( FAILED + TIMEOUTS ));; esac
+JOB_LINES=$(printf '%s\n' "$JOB_STATE" | tail -n +2 | sort)
+
 if [ "$IN_FLIGHT" -lt 0 ] || [ "$OVER_COMPLETED" -gt 0 ] \
    || [ "$IN_FLIGHT" -ne "$IN_FLIGHT_MEASURED" ]; then
     # The counter itself is wrong. Never green.
@@ -64,10 +102,16 @@ elif [ "$FAILED" -eq 0 ] && [ "$TIMEOUTS" -eq 0 ]; then
     EMOJI="🟢"
     STATUS_WORD="ALL CLEAR"
     ACCOUNTING="${PASSED} passed + ${FAILED} failed + ${TIMEOUTS} timeout + ${IN_FLIGHT} in flight at report time = ${TOTAL} started"
+elif [ "$STILL_FAILING" -eq 0 ]; then
+    # Every job that failed today passed its most recent run. Amber, not
+    # green: this clears the banner, it does not erase the day.
+    EMOJI="🟡"
+    STATUS_WORD="RECOVERED"
+    ACCOUNTING="${PASSED} passed + ${FAILED} failed + ${TIMEOUTS} timeout + ${IN_FLIGHT} in flight at report time = ${TOTAL} started; every failing job passed its latest run"
 else
     EMOJI="🔴"
     STATUS_WORD="ISSUES"
-    ACCOUNTING="${PASSED} passed + ${FAILED} failed + ${TIMEOUTS} timeout + ${IN_FLIGHT} in flight at report time = ${TOTAL} started"
+    ACCOUNTING="${PASSED} passed + ${FAILED} failed + ${TIMEOUTS} timeout + ${IN_FLIGHT} in flight at report time = ${TOTAL} started; ${STILL_FAILING} job(s) still red at report time"
 fi
 
 # Build reports for each channel
@@ -77,23 +121,14 @@ REPORT_DISCORD="${EMOJI} **CronAlarm Daily Report — ${HOSTNAME}**
 
 REPORT_PLAIN="CronAlarm ${STATUS_WORD}: ${ACCOUNTING} on ${HOSTNAME} (${DATE_TAG})"
 
-if [ "$FAILED" -gt 0 ]; then
+if [ "$FAILED" -gt 0 ] || [ "$TIMEOUTS" -gt 0 ]; then
+    # One line per distinct job (FAIL and TIMEOUT together — both are
+    # "the run did not succeed"), never truncated. See 1.6 note above.
+    NBAD=$(printf '%s\n' "$JOB_LINES" | grep -c .)
     REPORT_DISCORD="${REPORT_DISCORD}
-🔴 **${FAILED} failures:**"
-    FAILURES=$(grep "FAIL:" "$LOG_FILE" | sed 's/.*FAIL:  /  - /' | head -10)
-    REPORT_DISCORD="${REPORT_DISCORD}
-${FAILURES}"
-    REPORT_PLAIN="${REPORT_PLAIN}. ${FAILED} failures."
-fi
-
-if [ "$TIMEOUTS" -gt 0 ]; then
-    # Timeouts log a single TIMEOUT: line (no FAIL: line since 1.5), so
-    # they need their own name listing to stay visible in the report.
-    TIMEOUT_LIST=$(grep -E "${STAMP}TIMEOUT:" "$LOG_FILE" | sed 's/.*TIMEOUT: /  - /' | head -10)
-    REPORT_DISCORD="${REPORT_DISCORD}
-⏰ **${TIMEOUTS} timeouts:**
-${TIMEOUT_LIST}"
-    REPORT_PLAIN="${REPORT_PLAIN} ${TIMEOUTS} timeouts."
+🔴 **${FAILED} failures + ${TIMEOUTS} timeouts across ${NBAD} job(s)** — one line per job, nothing truncated:
+${JOB_LINES}"
+    REPORT_PLAIN="${REPORT_PLAIN}. ${FAILED} failures + ${TIMEOUTS} timeouts across ${NBAD} jobs, ${STILL_FAILING} still red."
 fi
 
 echo "$REPORT_DISCORD"
@@ -128,6 +163,7 @@ REPORT_FILE="$INBOX_DIR/CRON-REPORT-${DATE_TAG}.md"
     echo "- **Failed:** $FAILED"
     echo "- **Timeouts:** $TIMEOUTS"
     echo "- **In flight at report time:** $IN_FLIGHT"
+    echo "- **Still failing at report time:** $STILL_FAILING"
     echo "- **Accounting:** $ACCOUNTING"
     echo ""
     echo "## Full Log"
