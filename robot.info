@@ -11,8 +11,8 @@
 
   "name": "CronAlarm",
   "tagline": "The cron wrapper that screams when things break — no silent failures, ever.",
-  "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook. Daily summaries at 11 PM round it out. Pure bash, no daemon, no server, no language runtime beyond what's already on a stock Linux box. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
-  "version": "1.6",
+  "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook. A daily report shows what passed, what failed, what recovered — and which scheduled runs never happened at all (a rebooted scheduler swallows slots silently; CronAlarm names them). Bash + python3, no daemon, no server, no database. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
+  "version": "2.1",
   "license": "MIT",
   "homepage": "https://github.com/GuyMannDude/cronalarm",
   "source": "https://github.com/GuyMannDude/cronalarm",
@@ -25,9 +25,12 @@
     "Captures stdout + stderr + exit code on every run.",
     "Alerts on failure: Discord webhook + local file drop.",
     "Local file drop always on — failure reports land at ~/.cronalarm/inbox/ regardless of which channels are configured. Survives a Discord outage.",
-    "Daily summary at 11 PM — one digest, all channels, shows which jobs passed/failed today.",
+    "Daily report at 11 PM — pass/fail/recovered per job, with closed accounting (passed+failed+timeouts+in-flight must equal started, and a derived and an independently measured in-flight count must agree — a counter that doesn't reconcile forces COUNTER MISMATCH, never green).",
+    "Missed-run detection — expected slots are derived from the live crontab and slots with no run at all are reported, split into 'scheduler was down' vs 'unexplained'. A run that never happened is no longer indistinguishable from a run with nothing to report.",
+    "Honest staleness — a failure from this morning is labeled 'NOT re-checked (18h29m stale)', never republished as current. Jobs on an explicit read-only allowlist (~/.cronalarm/reverify.map) are re-verified live right before the report composes.",
+    "Skim-free routing — ALL CLEAR days append one line to a local green digest instead of posting to a channel someone reads; only non-green days address a reader.",
     "Structured logs — one file per day at ~/.cronalarm/logs/YYYY-MM-DD.log. Greppable, parseable, agent-friendly.",
-    "Idempotent installer — re-running install.sh updates config without nuking prior setup.",
+    "Re-runnable installer — re-running install.sh upgrades the scripts and leaves an existing config file untouched.",
     "Unattended install supported — pass channel config as env vars + `--yes` flag for CI / automation."
   ],
 
@@ -36,25 +39,35 @@
       {"command": "cronalarm \"Job Name\" <command...>", "purpose": "Run a command under CronAlarm's protection. Job name appears in alerts + summaries."},
       {"command": "bash install.sh", "purpose": "Interactive installer. Walks through channel setup (Discord) and writes config to ~/.cronalarm/env."},
       {"command": "bash install.sh --yes", "purpose": "Unattended install — channels configured via env vars (CRONALARM_DISCORD_WEBHOOK, etc.)."},
-      {"command": "cronalarm-report.sh", "purpose": "Daily digest. Reads today's log and posts the summary to Discord. Typically run via cron at 11 PM."}
+      {"command": "cronalarm-report.sh", "purpose": "Daily report. Reads today's log, checks for missed slots, and delivers to the configured channels (inbox always; Discord and/or JSON endpoint on non-green days). Typically run via cron at 11 PM."},
+      {"command": "cronalarm-missed-runs.py [--date YYYY-MM-DD] [--json]", "purpose": "Report scheduled cron slots that produced no run at all, from the live crontab + the day's log + the scheduler's service journal. A reader — never triggers or backfills."}
     ],
     "config_env_vars": [
       {"name": "CRONALARM_DIR", "purpose": "Config + log directory. Default: ~/.cronalarm"},
-      {"name": "CRONALARM_DISCORD_WEBHOOK", "purpose": "Discord channel webhook URL. Alerts and daily reports post here."},
+      {"name": "CRONALARM_DISCORD_WEBHOOK", "purpose": "Discord webhook for per-failure alerts. The daily report does NOT use this — see CRONALARM_REPORT_WEBHOOK."},
       {"name": "CRONALARM_MENTION", "purpose": "Optional mention (e.g. '@here') prepended to Discord failure alerts — pair with the channel's 'Only @mentions' setting so only failures make a sound."},
       {"name": "CRONALARM_TIMEOUT", "purpose": "Per-job timeout in seconds. Default 300. Hung jobs get SIGKILLed and alerted."},
-      {"name": "CRONALARM_INBOX_DIR", "purpose": "Where local failure reports get dropped. Default: $CRONALARM_DIR/inbox."}
+      {"name": "CRONALARM_INBOX_DIR", "purpose": "Where local failure reports get dropped. Default: $CRONALARM_DIR/inbox."},
+      {"name": "CRONALARM_REPORT_WEBHOOK", "purpose": "Discord webhook for the daily report on non-green days. Separate from the failure-alert webhook so the alert channel stays skim-free. Unset = skipped."},
+      {"name": "CRONALARM_BUS_URL", "purpose": "JSON POST endpoint for the daily report on non-green days (message bus / automation). Unset = skipped — the report never POSTs at an empty string."},
+      {"name": "CRONALARM_BUS_TO", "purpose": "Recipient field in the JSON payload. Default: ops."},
+      {"name": "CRONALARM_GREEN_DIGEST", "purpose": "Where ALL CLEAR days append their one-line digest entry. Default: $CRONALARM_DIR/green-digest.jsonl."},
+      {"name": "CRONALARM_REVERIFY_MAP", "purpose": "Tab-separated 'job name<TAB>command' allowlist of read-only checks the report may re-run before composing. Default: $CRONALARM_DIR/reverify.map; absent = nothing re-verified, reds keep their honest stale label."},
+      {"name": "CRONALARM_GHA_STATE_FILE", "purpose": "Retention jsonl written by a CI-watching job; enables a GitHub Actions section in the daily report. Unset = section skipped."},
+      {"name": "CRONALARM_MISSED_HELPER", "purpose": "Path to cronalarm-missed-runs.py. Default: the copy next to the report script."},
+      {"name": "CRONALARM_GHA_WATCH_HHMM", "purpose": "HH:MM schedule of the CI-watching job, used to judge whether the GHA state file is fresh. Unset = entries are quoted with their timestamp instead of judged."},
+      {"name": "CRONALARM_CRON_UNIT", "purpose": "systemd unit of the cron scheduler, for missed-run outage attribution. Default cron.service; cronie systems use crond.service. Unknown unit = scheduler state reported as unknown, never guessed."}
     ]
   },
 
   "install": {
     "manual_docs": "https://github.com/GuyMannDude/cronalarm#quick-start",
     "platforms": ["linux", "macos"],
-    "runtime": "bash (stock POSIX shell + curl + standard coreutils — no Python, no Node, no language runtime)"
+    "runtime": "bash 4+ and python3 (both stock on typical Linux boxes) + GNU coreutils. No daemon, no database, no package manager."
   },
 
   "compatibility": {
-    "schedulers": ["systemd-cron", "vixie-cron", "cronie", "anacron", "any standard Linux/macOS crontab"],
+    "schedulers": ["systemd-cron", "vixie-cron", "cronie (set CRONALARM_CRON_UNIT=crond.service)", "any standard crontab — missed-run OUTAGE ATTRIBUTION needs a systemd journal; without one, misses are reported with scheduler state unknown"],
     "channels": ["Discord (webhook)", "Local file (~/.cronalarm/inbox/)"]
   },
 
@@ -63,7 +76,10 @@
     "data_location": "All logs + failure inbox local on disk under ~/.cronalarm/. Nothing leaves the machine unless a channel is configured.",
     "auth": "Bash script with the file permissions of whoever's crontab it runs from. No additional auth layer.",
     "outbound_calls": [
-      "Discord webhook — only when CRONALARM_DISCORD_WEBHOOK is set and a job fails or daily report runs."
+      "Failure-alert Discord webhook — only when CRONALARM_DISCORD_WEBHOOK is set and a job fails (carries job name, command, exit code, last output lines, hostname).",
+      "Daily-report Discord webhook — only when CRONALARM_REPORT_WEBHOOK is set and the day was not ALL CLEAR (carries the full report text and hostname).",
+      "Daily-report JSON POST — only when CRONALARM_BUS_URL is set and the day was not ALL CLEAR (carries the full report text, per-job counts and hostname to the endpoint you configured).",
+      "The green digest is a LOCAL file append, never a network call."
     ]
   },
 
@@ -88,11 +104,11 @@
     },
     {
       "q": "Do I need a server / daemon / database?",
-      "a": "No. CronAlarm is pure bash. The wrapper writes to local log files and posts to your configured channels via curl. No process needs to be running between cron jobs. Stops being 'installed' the moment you delete the scripts."
+      "a": "No. CronAlarm is bash + python3 scripts. The wrapper writes to local log files and posts to your configured channels over plain HTTPS. No process needs to be running between cron jobs. Stops being 'installed' the moment you delete the scripts."
     },
     {
       "q": "Which notification channels are supported?",
-      "a": "Two: Discord webhook (recommended) and local file drop (~/.cronalarm/inbox/). Local file drop is always on so you have a permanent record even if a channel fails. The script handles a missing webhook gracefully."
+      "a": "For failures: a Discord webhook plus the always-on local file drop (~/.cronalarm/inbox/). For the daily report: a separate Discord webhook and/or a JSON POST endpoint on non-green days, and a local green-digest file on ALL CLEAR days. The local drops are the durability anchor — every channel is optional and a missing one degrades gracefully, never silently."
     },
     {
       "q": "How do I wrap an existing cron job?",
@@ -100,7 +116,7 @@
     },
     {
       "q": "What does the daily summary look like?",
-      "a": "Runs at 11 PM by default (configured by install.sh). Reads ~/.cronalarm/logs/YYYY-MM-DD.log, counts pass/fail per job, and posts a one-screen digest to Discord. Useful for catching jobs that pass but should have flagged — e.g. a backup that completed but produced 0 bytes."
+      "a": "Runs at 11 PM by default. One status line with closed accounting (passed+failed+timeouts+in-flight = started, plus ran+missed = scheduled slots), then one line per failing job with its recovery state — recovered, re-verified green, still red, or honestly labeled stale. ALL CLEAR days go to a local green digest; non-green days go to your configured report channels. Missed slots are listed separately from failures, because a run that never happened produced no exit code."
     },
     {
       "q": "Can I install it unattended for CI / automation?",
@@ -116,6 +132,6 @@
     }
   ],
 
-  "generated_at": "2026-08-17T00:00:00Z",
+  "generated_at": "2026-08-25T00:00:00Z",
   "spec_url": "https://github.com/GuyMannDude/mnemo-cortex/blob/master/ROBOT-INFO-SPEC.md"
 }

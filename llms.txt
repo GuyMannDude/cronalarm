@@ -1,6 +1,6 @@
 # CronAlarm
 
-> The cron wrapper that screams when things break. Every cron job runs through a bash wrapper that captures stdout, stderr, exit code, and runtime. On failure or timeout, it pings your Discord webhook and writes a local file drop. Daily summary at 11 PM. No daemon, no server, no language runtime beyond stock bash + curl.
+> The cron wrapper that screams when things break. Every cron job runs through a bash wrapper that captures stdout, stderr, exit code, and runtime. On failure or timeout, it pings your Discord webhook and writes a local file drop. Daily report at 11 PM covers pass/fail/recovered per job AND scheduled runs that never happened at all. No daemon, no server — bash + python3 scripts.
 
 CronAlarm fixes the silent-failure problem with `cron`. The 3 AM backup that quietly stopped working last week shouldn't be discovered next Tuesday when you need the backup. Wrap every job with `cronalarm "Job Name" /path/to/script.sh` and any non-zero exit or hang past the configurable timeout produces an alert through the channels you've configured.
 
@@ -13,14 +13,15 @@ Two channels: a Discord webhook (recommended) and a local file drop at `~/.crona
 
 ## Agent Manifests
 
-- [robot.info](https://github.com/GuyMannDude/cronalarm/blob/master/robot.info): Structured product manifest (JSON). Identity, capabilities, all 4 CLI commands, all 8 config env vars, scheduler + channel compatibility matrix, privacy + outbound-call list, and 10 common-question/answer pairs covering "why not MAILTO", what happens on hang, what's logged where, and unattended-install. Read this first if you're an agent answering a user's questions about CronAlarm.
+- [robot.info](https://github.com/GuyMannDude/cronalarm/blob/master/robot.info): Structured product manifest (JSON). Identity, capabilities, all 5 CLI commands, all 14 config env vars, scheduler + channel compatibility matrix, privacy + outbound-call list, and 10 common-question/answer pairs covering "why not MAILTO", what happens on hang, what's logged where, and unattended-install. Read this first if you're an agent answering a user's questions about CronAlarm.
 - [robot.install](https://github.com/GuyMannDude/cronalarm/blob/master/robot.install): Non-interactive install manifest. Pair with `./robot-install.sh` which wraps the existing `install.sh` and emits a single JSON object on stdout (`deps / manifest / install / smoke_test` per-step status). Zero prompts, exit 0 on success.
 
 ## Code
 
-- [sparks-cron.sh](https://github.com/GuyMannDude/cronalarm/blob/master/sparks-cron.sh): The wrapper script. Captures output, enforces timeout, fires alerts on failure.
+- [cronalarm.sh](https://github.com/GuyMannDude/cronalarm/blob/master/cronalarm.sh): The wrapper script. Captures output, enforces timeout, fires alerts on failure.
 - [install.sh](https://github.com/GuyMannDude/cronalarm/blob/master/install.sh): Interactive install wizard for channel setup; also accepts unattended-install via env vars + `--yes` flag.
-- [cronalarm-report.sh](https://github.com/GuyMannDude/cronalarm/blob/master/cronalarm-report.sh): Daily summary script (typically run via cron at 11 PM). Reads the day's log and posts a pass/fail digest.
+- [cronalarm-report.sh](https://github.com/GuyMannDude/cronalarm/blob/master/cronalarm-report.sh): Daily report script (typically run via cron at 11 PM). Pass/fail/recovered per job with closed accounting; green days append to a local digest, non-green days deliver to the configured channels.
+- [cronalarm-missed-runs.py](https://github.com/GuyMannDude/cronalarm/blob/master/cronalarm-missed-runs.py): Missed-run detector. Derives expected slots from the live crontab and reports slots with no run at all, split into scheduler-down vs unexplained.
 
 ## Related
 

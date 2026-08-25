@@ -14,6 +14,11 @@ check() {
     local cmd="$2"
     if eval "$cmd" > /dev/null 2>&1; then
         echo "  ✅ $name"
+    # Retry once after a 20s pause before screaming — rides out transient
+    # blips (a service mid-restart, a brief network rebind) that would
+    # otherwise cry wolf every time they last a few seconds.
+    elif sleep 20 && eval "$cmd" > /dev/null 2>&1; then
+        echo "  ✅ $name (recovered on retry)"
     else
         echo "  ❌ $name"
         FAILURES="${FAILURES}\n- $name is DOWN"
@@ -25,6 +30,8 @@ warn_check() {
     local cmd="$2"
     if eval "$cmd" > /dev/null 2>&1; then
         echo "  ✅ $name"
+    elif sleep 20 && eval "$cmd" > /dev/null 2>&1; then
+        echo "  ✅ $name (recovered on retry)"
     else
         echo "  ⚠️  $name"
         WARNINGS="${WARNINGS}\n- $name: not running"

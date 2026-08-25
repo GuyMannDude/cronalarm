@@ -4,14 +4,15 @@
 # ═══════════════════════════════════════════════════════════════════
 #
 #  Every cron job runs through this wrapper. If it fails, you hear
-#  about it immediately via Discord. No silent failures. Ever.
+#  about it immediately via Discord, and it always lands in the local
+#  inbox. No silent failures. Ever.
 #
 #  Usage:
 #    cronalarm <job-name> <command...>
 #
 #  Examples:
-#    cronalarm "Hourly Backup" /home/guy/scripts/backup.sh
-#    cronalarm "Vital Monitor" /home/guy/scripts/vitals.sh
+#    cronalarm "Hourly Backup" /home/user/scripts/backup.sh
+#    cronalarm "Vital Monitor" /home/user/scripts/vitals.sh
 #
 #  What it does:
 #    1. Logs the start time
@@ -25,9 +26,22 @@
 #    - Discord webhook
 #    - Local file drop (always on)
 #
+#  Removed channels: Textbelt SMS (1.2), Telegram (1.3) — both dropped
+#  once dead rather than left in place looking like coverage.
+#
 # ═══════════════════════════════════════════════════════════════════
 
 set -euo pipefail
+
+# ─── Self-contained environment ───
+# A manual run without `source ~/.cronalarm/env` must behave like a cron run:
+# same inbox, same webhooks. A sourcing failure falls back to the defaults
+# below instead of killing the wrapper — a config problem must never be the
+# reason a failure went unreported.
+if [ -z "${CRONALARM_INBOX_DIR:-}" ] && [ -f "$HOME/.cronalarm/env" ]; then
+    # shellcheck disable=SC1091
+    . "$HOME/.cronalarm/env" || echo "cronalarm: WARNING: sourcing ~/.cronalarm/env failed; using defaults" >&2
+fi
 
 # ─── Configuration ───
 CRONALARM_DIR="${CRONALARM_DIR:-$HOME/.cronalarm}"
@@ -80,7 +94,7 @@ fi
 #  FAILURE PATH — SCREAM ON EVERY CHANNEL
 # ═══════════════════════════════════════════════════
 
-# ONE completion line per job. A timeout used to write FAIL: and then
+# ONE completion line per job (1.5). A timeout used to write FAIL: and then
 # TIMEOUT: as a second line, so every timed-out job counted as two
 # completions in the daily report and silently absorbed one in-flight job.
 TIMEOUT_FLAG=""
@@ -95,9 +109,9 @@ echo "  Output: ${OUTPUT:0:500}" >> "$LOG_FILE"
 # ─── Discord (markdown) ───
 if [ -n "$DISCORD_WEBHOOK" ]; then
     # Use python3 for safe JSON encoding — no shell string injection
-    # `|| DISCORD_SEND_FAILED=1` (not a bare $? check): this script runs under
-    # set -e, so an unguarded non-zero python exit would abort right here and
-    # skip the WARN log line below.
+    # `|| DISCORD_SEND_FAILED=1` (not a bare $? check): the script runs under
+    # set -e, so an unguarded non-zero python exit would abort HERE and skip
+    # the WARN log line and the inbox drop below. Fired-test-verified 2026-08-01.
     DISCORD_SEND_FAILED=0
     python3 -c "
 import json, sys, urllib.request
@@ -114,9 +128,10 @@ try:
     urllib.request.urlopen(req, timeout=10)
 except Exception as e:
     print(f'Discord alert failed: {e}', file=sys.stderr)
-    # Exit non-zero so the WARN branch below is reachable. Before this, the
-    # exception was swallowed and python exited 0, so 'WARN: Discord alert
-    # failed' could never be logged — silent alert loss left a clean log.
+    # Exit non-zero so the wrapper's WARN branch is reachable. Before
+    # 2026-08-01 this swallowed the exception and exited 0, so the
+    # 'WARN: Discord alert failed' log line below could NEVER fire —
+    # a silent alert loss would have left a clean log.
     sys.exit(1)
 " <<DISCORD_EOF || DISCORD_SEND_FAILED=1
 ${MENTION:+${MENTION} }🚨 **CRON FAILURE on ${HOSTNAME}**${TIMEOUT_FLAG}
@@ -137,6 +152,14 @@ DISCORD_EOF
         echo "[$END_TIMESTAMP] WARN: Discord alert failed" >> "$LOG_FILE"
     fi
 fi
+
+# ─── Telegram: REMOVED in 1.3 (2026-07-25) ───
+# The bot token and chat id were both empty strings, so the `-n` guard
+# skipped this block on every run since install — the channel was never
+# actually live. It cost nothing at runtime but it read as coverage in
+# the config, the header comment and the docs, which is worse than absent:
+# it invites you to believe a second route exists. Ripped out for the
+# same reason 1.2 dropped Textbelt SMS.
 
 # ─── Local file drop (always on) ───
 SCREAM_FILE="$INBOX_DIR/CRON-FAILURE-${DATE_TAG}.md"

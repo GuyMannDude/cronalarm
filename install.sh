@@ -5,7 +5,7 @@
 #
 #  Run this once. It installs everything:
 #    1. cronalarm wrapper (the screamer)
-#    2. All monitoring scripts (if present)
+#    2. Daily report + missed-run detector + example monitor
 #    3. Crontab with every job
 #    4. Notification setup (Discord)
 #    5. Log rotation
@@ -45,32 +45,20 @@ mkdir -p "$SCRIPTS_DIR" "$CRONALARM_DIR" "$LOG_DIR" "$INBOX_DIR"
 INSTALLER_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ─── Copy core scripts ───
-cp "$INSTALLER_DIR/sparks-cron.sh" "$SCRIPTS_DIR/cronalarm"
+cp "$INSTALLER_DIR/cronalarm.sh" "$SCRIPTS_DIR/cronalarm"
 cp "$INSTALLER_DIR/cronalarm-report.sh" "$SCRIPTS_DIR/cronalarm-report.sh"
+cp "$INSTALLER_DIR/cronalarm-missed-runs.py" "$SCRIPTS_DIR/cronalarm-missed-runs.py"
 chmod +x "$SCRIPTS_DIR/cronalarm"
 chmod +x "$SCRIPTS_DIR/cronalarm-report.sh"
+chmod +x "$SCRIPTS_DIR/cronalarm-missed-runs.py"
 
 echo "  ✅ Core scripts installed"
 
-# ─── Copy optional scripts if present ───
-OPTIONAL_SCRIPTS=(
-    "vital-services-monitor.sh"
-    "soul-capture.sh"
-    "april-bedding-reminder.sh"
-    "cleanup-transcripts.sh"
-)
-
-INSTALLED_OPTIONAL=0
-for script in "${OPTIONAL_SCRIPTS[@]}"; do
-    if [ -f "$INSTALLER_DIR/$script" ]; then
-        cp "$INSTALLER_DIR/$script" "$SCRIPTS_DIR/$script"
-        chmod +x "$SCRIPTS_DIR/$script"
-        ((INSTALLED_OPTIONAL++))
-    fi
-done
-
-if [ "$INSTALLED_OPTIONAL" -gt 0 ]; then
-    echo "  ✅ $INSTALLED_OPTIONAL optional scripts installed"
+# ─── Copy example monitor (a starting point, not required) ───
+if [ -f "$INSTALLER_DIR/examples/vital-services-monitor.sh" ]; then
+    cp "$INSTALLER_DIR/examples/vital-services-monitor.sh" "$SCRIPTS_DIR/vital-services-monitor.sh"
+    chmod +x "$SCRIPTS_DIR/vital-services-monitor.sh"
+    echo "  ✅ Example monitor installed (customize $SCRIPTS_DIR/vital-services-monitor.sh)"
 fi
 
 # ═══════════════════════════════════════════════════
@@ -81,15 +69,20 @@ echo ""
 echo "  ─── Notification Setup ───"
 echo ""
 
-# Load existing config if present
+# An existing env file is the user's config, not the installer's — it may
+# carry settings this template knows nothing about (report channels, custom
+# timeouts). Upgrades keep it untouched; only a fresh install writes one.
 if [ -f "$ENV_FILE" ]; then
+    ENV_EXISTS=1
     source "$ENV_FILE"
+else
+    ENV_EXISTS=0
 fi
 
 # --- Discord ---
 CURRENT_DISCORD="${CRONALARM_DISCORD_WEBHOOK:-}"
 
-if [ "$AUTO_YES" != "--yes" ]; then
+if [ "$ENV_EXISTS" -eq 0 ] && [ "$AUTO_YES" != "--yes" ]; then
     echo "  📢 Discord Webhook (recommended)"
     echo "     Get one: Server Settings → Integrations → Webhooks"
     echo ""
@@ -107,7 +100,10 @@ if [ "$AUTO_YES" != "--yes" ]; then
     echo ""
 fi
 
-# ─── Write environment file ───
+# ─── Write environment file (fresh installs only) ───
+if [ "$ENV_EXISTS" -eq 1 ]; then
+    echo "  ✅ Existing config kept at $ENV_FILE (edit it directly to change settings)"
+else
 cat > "$ENV_FILE" << ENVEOF
 # ═══════════════════════════════════════════════════
 # CronAlarm Environment — Edit to change settings
@@ -129,11 +125,44 @@ export CRONALARM_TIMEOUT=300
 
 # Where to drop failure reports (default: ~/.cronalarm/inbox)
 # Set this to your agent's inbox if you use one:
-# CRONALARM_INBOX_DIR="\$HOME/.openclaw/workspace/DESK/inbox"
+# CRONALARM_INBOX_DIR="\$HOME/.agent/inbox"
 export CRONALARM_INBOX_DIR="\$HOME/.cronalarm/inbox"
-ENVEOF
 
+# ─── Daily report delivery (all optional — unset = inbox only) ───
+
+# Discord webhook for the daily report on NON-GREEN days. Deliberately a
+# separate webhook from the failure-alert one above, so your alert channel
+# stays skim-free. ALL CLEAR days never post anywhere — they append one
+# line to the green digest below instead.
+# export CRONALARM_REPORT_WEBHOOK=""
+
+# JSON POST endpoint for the daily report on non-green days (for a message
+# bus or automation that reads reports). Empty = skipped.
+# export CRONALARM_BUS_URL=""
+# export CRONALARM_BUS_TO="ops"          # recipient field in the payload
+
+# Where ALL CLEAR days append their one-line digest entry.
+# export CRONALARM_GREEN_DIGEST="\$HOME/.cronalarm/green-digest.jsonl"
+
+# Read-only re-verify map: jobs the report may safely re-run right before
+# composing, so a morning failure that's been fixed since is labeled
+# honestly. One line per job: job name, a TAB, the command. Only list
+# commands that change NOTHING (pure health checks).
+# Create at: \$HOME/.cronalarm/reverify.map
+
+# GitHub Actions section: point this at a retention jsonl kept by a
+# CI-watching job to include CI state in the daily report. Unset = skipped.
+# CRONALARM_GHA_WATCH_HHMM is that job's schedule (HH:MM) — the report uses
+# it to judge whether the file carries tonight's run or a stale entry.
+# export CRONALARM_GHA_STATE_FILE=""
+# export CRONALARM_GHA_WATCH_HHMM=""
+
+# Scheduler unit for missed-run attribution (which misses fall in an
+# outage). Debian/Ubuntu = cron.service (default); cronie/RHEL = crond.service.
+# export CRONALARM_CRON_UNIT="cron.service"
+ENVEOF
 echo "  ✅ Config saved to $ENV_FILE"
+fi
 
 # ─── Summary of configured channels ───
 echo ""
@@ -209,7 +238,10 @@ if [ "$AUTO_YES" != "--yes" ]; then
     if [ "$DO_TEST" = "y" ]; then
         echo "  Sending test..."
         source "$ENV_FILE"
-        "$SCRIPTS_DIR/cronalarm" "Install Test" bash -c "echo 'CronAlarm is alive!' && exit 1" 2>/dev/null || true
+        # `false` and not `bash -c "exit 1"`: the wrapper joins its args with
+        # spaces and re-parses them, which strips the inner quotes and turns
+        # `bash -c exit 1` into a SUCCESSFUL command — a test that cannot fail.
+        "$SCRIPTS_DIR/cronalarm" "Install Test" false 2>/dev/null || true
         echo "  ✅ Test alert sent — check your channels!"
     fi
 fi
@@ -231,7 +263,7 @@ echo "    $SCRIPTS_DIR/cronalarm \"Test\" echo \"Hello from CronAlarm\""
 echo ""
 echo "  Force a failure to test alerts:"
 echo "    source $ENV_FILE"
-echo "    $SCRIPTS_DIR/cronalarm \"Test Fail\" bash -c \"exit 1\""
+echo "    $SCRIPTS_DIR/cronalarm \"Test Fail\" false"
 echo ""
 echo "  View today's log:"
 echo "    cat $LOG_DIR/$(date '+%Y-%m-%d').log"

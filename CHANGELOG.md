@@ -1,5 +1,128 @@
 # CronAlarm Changelog
 
+## 2.1 — 2026-08-25 — The repo and its reference deployment had drifted into two different products
+
+**Problem.** The repository copy of the report script was three releases
+behind the deployment it was written against — and what *had* been committed
+carried that one deployment's wiring as product code: a hardcoded report
+recipient, a digest path inside another system's directory, a CI-watch
+section reading a state file no fresh install has, and a Discord webhook
+that was read but never used. A fresh install's daily report delivered
+nowhere. Separately, the installer referenced optional scripts that don't
+exist in the repo, rewrote an existing config file on every re-run (losing
+any setting it didn't know about), and its own suggested failure test —
+`cronalarm "Test Fail" bash -c "exit 1"` — could never fail: the wrapper
+joins its arguments with spaces and re-parses them, which strips the inner
+quotes and turns the command into a successful bare `exit`.
+
+**Fix.** Every site-specific value in the report is now configuration with
+a local-or-empty default: `CRONALARM_BUS_URL` / `CRONALARM_BUS_TO` (JSON
+POST endpoint + recipient), `CRONALARM_REPORT_WEBHOOK` (a Discord webhook
+for non-green daily reports, deliberately separate from the failure-alert
+webhook so alert channels stay skim-free), `CRONALARM_GREEN_DIGEST`
+(where ALL CLEAR days append), `CRONALARM_GHA_STATE_FILE` (CI section,
+unset = skipped), `CRONALARM_REVERIFY_MAP` (the 1.9 re-verify allowlist,
+moved from a hardcoded list to `~/.cronalarm/reverify.map`), and
+`CRONALARM_MISSED_HELPER` (defaults to the copy installed next to the
+report script). With nothing configured the report degrades to inbox-only
+— never a POST at an empty string. `cronalarm-missed-runs.py` now ships
+in the repo. The wrapper is renamed `sparks-cron.sh` → `cronalarm.sh`
+(products carry role names, not their maker's project names) and both it
+and the report self-source `~/.cronalarm/env`, so a manual run behaves
+exactly like a cron run. The installer keeps an existing env file
+untouched on re-run, installs the example monitor from `examples/`, and
+recommends `false` as the failure test — one that can actually fail. The
+example monitor gains a retry-once-after-20s pause before screaming, so
+transient blips stop crying wolf.
+
+**Adversarial review of this release then found — and this release fixes —
+five ways the missed-run detector itself could lie.** (1) On a machine
+where no crontab mtime is readable (a stock Debian `--yes` install), the
+assessability floor fell back to "now", every slot was silently dropped,
+and the report went green over a day of unchecked slots — absence of
+evidence rendering as a clean report, rebuilt inside the very feature
+built to kill it. The detector now keeps its own crontab seen-record
+(hash + first-seen time) as the floor of last resort, the report names
+unassessable slots in its accounting line, and a day where *nothing* was
+assessable goes 🟡 MISSED CHECK NOT ARMED, never green. (2) A crontab
+line using Vixie names (`MON`, `JAN`) or `@daily` crashed the parser and
+turned every future report amber; names and @-macros now parse, each
+line parses inside its own guard so one bad entry can't sink the rest,
+and lines that still can't be parsed are counted and shown — never
+silently unchecked. (3) `journalctl` for a wrong or absent unit exits 0
+with no entries, which read as "scheduler up all day" and made every
+reboot miss a false UNEXPLAINED red; the unit is now verified loaded
+first (and configurable: `CRONALARM_CRON_UNIT`, for cronie's
+`crond.service`), with anything else honestly reported as scheduler
+state unknown — including a new 🟡 MISSED (CAUSE UNKNOWN) status so the
+headline never asserts an outage the evidence doesn't show. (4) The
+helper's stderr was discarded, making failures undiagnosable; it now
+travels into the report beside the exit code. (5) A re-verify map entry
+with arguments failed a `-x` test and silently degraded to the stale
+label; entries now run as documented — commands, not just bare paths.
+
+*Releases 1.7, 1.9 and 2.0 below first ran in the reference deployment;
+2.1 is the first repository release that contains them. There is no 1.8 —
+the numbering skipped it.*
+
+## 2.0 — 2026-08-25 — A run that never happened left no trace at all
+
+**Problem.** Every counter in the daily report reads the day's log, so all
+of them answer "how did the runs that happened turn out?" — none could ask
+"did the run happen at all?". When the scheduler was down for 96 seconds
+across a job's only daily slot, the slot simply evaporated: no FAIL, no
+exit code, no log line. A day with a swallowed run was indistinguishable
+from a day with nothing to report, and for once-daily jobs that's a
+full-day hole.
+
+**Fix.** `cronalarm-missed-runs.py` derives every expected slot from the
+LIVE crontab (never a hand-maintained list, which would drift into its own
+silent failure), matches slots against START lines with a 120s tolerance,
+and checks the scheduler's own service journal to split misses into
+"scheduler was down" vs "scheduler was up — unexplained". The report gains
+a slot accounting line (`ran + missed = scheduled`) and two new statuses:
+🔴 MISSED RUNS (a slot passed with the scheduler up — harder than a
+failure, which at least produced an exit code) and 🟡 MISSED (SCHEDULER
+DOWN). Expectations are only asserted for slots after the crontab's own
+mtime, so adding a job today can never fabricate this morning's miss. A
+helper that cannot run degrades to 🟡 MISSED CHECK UNAVAILABLE and blocks
+green — absence of evidence is the exact defect this release fixes. The
+helper is a reader: it never triggers, backfills or reschedules anything.
+
+## 1.9 — 2026-08-23 — The 11 PM report republished a 4:30 AM alarm as if it were news
+
+**Problem.** A once-daily job that failed at 04:30 was printed at 23:00 as
+"STILL FAIL at report time" — a true statement about the log that makes a
+false claim about the world. An alarm's state and the world's state are
+coupled only at the instant of the check; anything that republishes an
+alarm without re-checking inherits that decoupling.
+
+**Fix.** Two halves, both about honesty. (1) Jobs that are safe to re-run
+— read-only monitors on an explicit allowlist — are RE-VERIFIED immediately
+before the report composes, with the time named: a pass renders as
+`RE-VERIFIED GREEN at 22:59 (fixed since)` and clears the banner without
+erasing the day (worst case 🟡 RECOVERED; 🟢 still requires zero failures
+all day). (2) Everything else gets its staleness named — `STILL FAIL, NOT
+re-checked (18h29m stale)` — so a reader can tell "red now" from "red this
+morning and fixed since". A re-verify that cannot run holds the red and
+names the gap; it never degrades to green. Re-verification runs under a
+hard shared time budget so the report itself can't blow its own timeout.
+
+## 1.7 — 2026-08-22 — A green night does not address an inbox
+
+**Problem.** The daily report delivered every night, including ALL CLEAR
+nights, to a channel with a reader on the other end. Hundreds of green
+ticks buried the real mail — an inbox that is almost all "nothing
+happened" trains its reader to skim, which is the exact reflex an alert
+route exists to avoid.
+
+**Fix.** ALL CLEAR nights append one JSON line to a local green digest
+(queryable on demand; the full report is already written to the inbox
+directory either way). Non-green nights — RECOVERED, ISSUES, COUNTER
+MISMATCH — still deliver to the configured channels: those need a reader.
+A failed digest append exits 1 exactly like a failed delivery; this job
+once died silently for five months, so delivery failures are never quiet.
+
 ## 1.6 — 2026-08-19 — The daily report answered "did anything break today?" when the reader asks "is anything broken now?"
 
 **Problem.** Two defects in the daily report, both found on the same real day

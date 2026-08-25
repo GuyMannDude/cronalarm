@@ -173,7 +173,7 @@ fi
 log "step 4/4 — smoke test"
 SMOKE_LOG="${HOME}/.cronalarm/logs/$(date +%Y-%m-%d).log"
 # Invoke wrapper directly to verify everything wired
-if "$REPO_DIR/sparks-cron.sh" "robot-install-smoke" /bin/true 2>/dev/null; then
+if "$REPO_DIR/cronalarm.sh" "robot-install-smoke" /bin/true 2>/dev/null; then
   if grep -q "robot-install-smoke" "$SMOKE_LOG" 2>/dev/null; then
     set_step smoke_test "{\"ok\": true, \"log_entry_written\": true, \"log_path\": \"$SMOKE_LOG\"}"
     emit true

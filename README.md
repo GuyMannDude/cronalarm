@@ -14,7 +14,8 @@ Most cron failures happen silently. A backup script breaks at 3 AM and nobody kn
 - **Timeout protection** — kills hung jobs and alerts you
 - **Discord alerts** — instant failure pings via webhook
 - **Local file drops** — failure reports always saved to disk
-- **Daily summaries** — one report at end of day, all channels
+- **Daily report** — pass/fail/recovered per job, with honest accounting
+- **Missed-run detection** — scheduled slots that never ran are named, not silently absent
 - **Structured logs** — one file per day, easy to grep
 
 ## Quick Start
@@ -67,8 +68,10 @@ Wrap any cron job:
 source ~/.cronalarm/env
 ~/scripts/cronalarm "Test" echo "Hello from CronAlarm"
 
-# Force a failure to test alerts:
-~/scripts/cronalarm "Test Fail" bash -c "exit 1"
+# Force a failure to test alerts (`false`, not `bash -c "exit 1"` — the
+# wrapper re-parses its joined arguments, which strips inner quotes and
+# would turn that into a successful bare `exit`):
+~/scripts/cronalarm "Test Fail" false
 ```
 
 That's it. If the command exits non-zero, every configured channel gets an alert with the job name, exit code, duration, and output.
@@ -92,15 +95,34 @@ Configure `CRONALARM_INBOX_DIR` in `~/.cronalarm/env` to point it at your agent'
 All settings live in `~/.cronalarm/env`:
 
 ```bash
-# Discord
-CRONALARM_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
+# NOTE: every var must be exported — cron runs `source env && cronalarm ...`,
+# and without export the wrapper (a child process) sees none of these.
+
+# Discord webhook for per-failure alerts
+export CRONALARM_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
 
 # Job timeout (seconds, default 300)
-CRONALARM_TIMEOUT=300
+export CRONALARM_TIMEOUT=300
 
 # Where failure reports are dropped
-CRONALARM_INBOX_DIR="$HOME/.cronalarm/inbox"
+export CRONALARM_INBOX_DIR="$HOME/.cronalarm/inbox"
+
+# ── Daily report delivery (all optional — unset = inbox only) ──
+
+# Discord webhook for the daily report on NON-green days. Separate from
+# the alert webhook above so your alert channel stays skim-free.
+# ALL CLEAR days append one line to a local green digest instead.
+export CRONALARM_REPORT_WEBHOOK="https://discord.com/api/webhooks/..."
+
+# Or/and a JSON POST endpoint (message bus, automation):
+# export CRONALARM_BUS_URL="https://your-endpoint/..."
+# export CRONALARM_BUS_TO="ops"
 ```
+
+The report also supports live re-verification of read-only checks
+(`~/.cronalarm/reverify.map`, one `job name<TAB>command` per line) so a
+morning failure that has been fixed since is labeled honestly instead of
+republished as current — see `robot.info` for the full option list.
 
 ## Adding Jobs
 
@@ -127,8 +149,9 @@ crontab ~/.cronalarm/crontab
 
 ```
 ~/scripts/
-├── cronalarm              ← The wrapper (runs every job)
-└── cronalarm-report.sh    ← Daily summary generator
+├── cronalarm                 ← The wrapper (runs every job)
+├── cronalarm-report.sh       ← Daily report generator
+└── cronalarm-missed-runs.py  ← Missed-run detector (used by the report)
 
 ~/.cronalarm/
 ├── env                    ← All notification settings
@@ -154,9 +177,9 @@ crontab ~/.cronalarm/crontab
 
 The `examples/` directory includes starter scripts for common tasks:
 
-- `vital-services-monitor.sh` — Check HTTP endpoints + disk space
-- `soul-capture.sh` — Archive config/state files to a remote server
-- `cleanup-transcripts.sh` — Age-based file cleanup with archive
+- `vital-services-monitor.sh` — Check HTTP endpoints, services + disk space (retries once before screaming)
+- `backup-to-remote.sh` — Archive files to a remote server
+- `cleanup-old-files.sh` — Age-based file cleanup with archive
 
 These are templates — customize for your setup.
 
@@ -171,9 +194,10 @@ bash install.sh --yes
 
 ## Requirements
 
-- Linux/macOS with `bash` 4+
-- `curl` (for notifications)
-- `python3` (for safe JSON encoding)
+- Linux with `bash` 4+ (macOS works for the wrapper; the report's missed-run
+  outage attribution needs a systemd journal and degrades to "scheduler
+  state unknown" without one)
+- `python3` (notifications, daily report, missed-run detection)
 - `timeout` (GNU coreutils)
 
 ## License
