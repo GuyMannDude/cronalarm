@@ -82,6 +82,24 @@ DURATION=$(( SECONDS - START_SECONDS ))
 OUTPUT=$(tail -50 "$TEMP_OUTPUT")  # Last 50 lines max
 rm -f "$TEMP_OUTPUT"
 
+# Failure evidence keeps its END. Progress output is chronological and the
+# error comes last, so the head-biased caps used through 2.1 (${OUTPUT:0:N})
+# preferentially discarded the diagnosis and kept the preamble — the more a
+# job logged its progress, the less of its failure survived (2026-08-24:
+# two real failures left no recoverable exit reason). Truncation is marked
+# and emptiness is stated, so a cut or a silent job never reads as a
+# complete record.
+tail_cap() {
+    local n="$1"
+    if [ -z "$OUTPUT" ]; then
+        printf '(no output)'
+    elif [ "${#OUTPUT}" -le "$n" ]; then
+        printf '%s' "$OUTPUT"
+    else
+        printf '[...first %s chars dropped]%s' "$(( ${#OUTPUT} - n ))" "${OUTPUT: -n}"
+    fi
+}
+
 # ─── Log result ───
 END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -104,7 +122,7 @@ if [ $EXIT_CODE -eq 124 ]; then
 else
     echo "[$END_TIMESTAMP] FAIL:  $JOB_NAME — exit=$EXIT_CODE (${DURATION}s)" >> "$LOG_FILE"
 fi
-echo "  Output: ${OUTPUT:0:500}" >> "$LOG_FILE"
+echo "  Output: $(tail_cap 500)" >> "$LOG_FILE"
 
 # ─── Discord (markdown) ───
 if [ -n "$DISCORD_WEBHOOK" ]; then
@@ -116,7 +134,13 @@ if [ -n "$DISCORD_WEBHOOK" ]; then
     python3 -c "
 import json, sys, urllib.request
 
-msg = json.dumps({'content': sys.stdin.read()[:2000]})
+# Discord's 2000-char hard limit, kept tail-preserving: a plain [:2000]
+# would re-cut the diagnosis a long command line pushed past the limit,
+# while [-2000:] would drop which job failed. Keep both ends.
+s = sys.stdin.read()
+if len(s) > 2000:
+    s = s[:400] + '\n[...]\n' + s[-1593:]
+msg = json.dumps({'content': s})
 req = urllib.request.Request(
     '$DISCORD_WEBHOOK',
     data=msg.encode('utf-8'),
@@ -142,9 +166,9 @@ ${MENTION:+${MENTION} }🚨 **CRON FAILURE on ${HOSTNAME}**${TIMEOUT_FLAG}
 **Duration:** ${DURATION}s
 **Time:** ${END_TIMESTAMP}
 
-**Output (last 50 lines):**
+**Output (tail):**
 \`\`\`
-${OUTPUT:0:1500}
+$(tail_cap 1200)
 \`\`\`
 DISCORD_EOF
 
@@ -172,7 +196,7 @@ SCREAM_FILE="$INBOX_DIR/CRON-FAILURE-${DATE_TAG}.md"
     echo "- **Duration:** ${DURATION}s"
     echo "- **Output:**"
     echo '```'
-    echo "${OUTPUT:0:500}"
+    echo "$(tail_cap 500)"
     echo '```'
     echo ""
 } >> "$SCREAM_FILE"

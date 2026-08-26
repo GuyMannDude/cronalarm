@@ -1,5 +1,28 @@
 # CronAlarm Changelog
 
+## 2.2 — 2026-08-25 — A failing job's captured output was cut from the wrong end, so the error that caused the failure was never written
+
+**Problem.** The wrapper captured the last 50 lines of a failed job's
+output (tail-biased, correct) and then wrote only the *first* 500
+characters of that capture to the log — and the first 1500 to Discord,
+the first 500 to the inbox drop. Progress output is chronological and
+the error comes last, so the head-biased cap preferentially discarded
+the diagnosis and preserved the preamble: the more a job explained
+itself, the less of its failure survived. Two real 2026-08-24 failures
+left no recoverable exit reason — the evidence was never written, so no
+later investigation could recover it. The truncation was also silent (a
+capped log looks like a log), and an empty capture wrote an empty
+`Output:` line indistinguishable from a job that was never captured.
+
+**Fix.** All three sinks now keep the *end* of the capture via a shared
+`tail_cap` helper: truncation is marked with how many leading characters
+were dropped, and an empty capture states `(no output)` explicitly. The
+Discord output share drops to 1200 characters to leave header room,
+and the 2000-character hard-limit gate itself is now tail-preserving
+(head + `[...]` + tail) instead of a plain head cut — a long command
+line can no longer push the diagnosis past the final gate
+(review catch, 2026-08-25).
+
 ## 2.1 — 2026-08-25 — The repo and its reference deployment had drifted into two different products
 
 **Problem.** The repository copy of the report script was three releases
