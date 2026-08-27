@@ -21,6 +21,41 @@
 #
 # ═══════════════════════════════════════════════════════════════════
 
+# ─── Argument guard (v2.4) ───
+# This script's side effects are DELIVERY: a bare run composes today's
+# report and sends it to every configured channel. Before v2.4 unknown
+# arguments were silently ignored, so an exploratory `--help` ran the
+# full job and POSTed a stray daily report to the bus. A script whose
+# every invocation delivers must refuse invocations it does not
+# recognize — before doing anything at all.
+usage() {
+    cat <<'USAGE'
+Usage: cronalarm-report.sh [--dry-run]
+
+Composes today's CronAlarm daily report from $CRONALARM_DIR/logs/.
+A bare run DELIVERS: green-digest append, bus POST, Discord webhook,
+inbox file — whatever ~/.cronalarm/env configures.
+
+  --dry-run    compose and print the report, then stop: no delivery,
+               no inbox file, no digest append
+  -h, --help   this text
+
+Any other argument prints this usage and exits 2 without composing
+or delivering anything.
+USAGE
+}
+
+DRY_RUN=0
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage >&2
+           echo "cronalarm-report: unknown argument: ${arg}" >&2
+           exit 2 ;;
+    esac
+done
+
 # ─── Self-contained environment ───
 # A manual run without `source ~/.cronalarm/env` must behave like a cron
 # run: same channels, same paths. A sourcing failure falls back to the
@@ -332,6 +367,36 @@ else
     [ "$UNPARSED_CT" -gt 0 ] && MISSED_CLAUSE="${MISSED_CLAUSE} (${UNPARSED_CT} cronalarm crontab line(s) could not be parsed and are NOT checked)"
 fi
 
+# v2.4 (Opie #3011 obs 2): the coverage ratio goes NEXT TO THE VERDICT.
+# On 08-26 the missed-run check could assess 157 of 877 slots, the ratio
+# sat in a mid-report accounting line, and the headline's "0 missed" read
+# as "nothing missed" when the true claim was "nothing missed among the
+# 18% we can prove". A verdict without its scope is a claim about the
+# world (doctrine-negative-space) — so the Status line itself now says
+# how much of the schedule the verdict covers.
+SLOT_UNIVERSE=$(( EXPECTED_SLOTS + UNASSESSABLE ))
+if [ "$MISSED_STATE" = "KNOWN" ]; then
+    if [ "$SLOT_UNIVERSE" -gt 0 ]; then
+        # Round to nearest (the prose one file over says "18%" for 157/877),
+        # but never let a nonzero coverage print "0%": 1/877 rounds to 0 and
+        # a floor claim of "0%" next to a verdict reads as "assessed nothing"
+        # when we assessed one. Below 0.5% shows "<1%".
+        COVERAGE_PCT=$(( (100 * EXPECTED_SLOTS + SLOT_UNIVERSE / 2) / SLOT_UNIVERSE ))
+        if [ "$COVERAGE_PCT" -eq 0 ] && [ "$EXPECTED_SLOTS" -gt 0 ]; then
+            COVERAGE_PCT_STR="<1%"
+        else
+            COVERAGE_PCT_STR="${COVERAGE_PCT}%"
+        fi
+        COVERAGE_CLAUSE=" [missed-run check covered ${EXPECTED_SLOTS} of ${SLOT_UNIVERSE} slots, ${COVERAGE_PCT_STR}]"
+    else
+        COVERAGE_CLAUSE=" [missed-run check covered 0 slots]"
+    fi
+else
+    # UNKNOWN: the headline already says MISSED CHECK UNAVAILABLE — a
+    # coverage number here would be an invented statistic.
+    COVERAGE_CLAUSE=""
+fi
+
 if [ "$IN_FLIGHT" -lt 0 ] || [ "$OVER_COMPLETED" -gt 0 ] \
    || [ "$IN_FLIGHT" -ne "$IN_FLIGHT_MEASURED" ]; then
     # The counter itself is wrong. Never green.
@@ -415,9 +480,9 @@ fi
 # Build reports for each channel
 REPORT_DISCORD="${EMOJI} **CronAlarm Daily Report — ${HOSTNAME}**
 **Date:** ${DATE_TAG}
-**Status:** ${STATUS_WORD} — ${ACCOUNTING}"
+**Status:** ${STATUS_WORD}${COVERAGE_CLAUSE} — ${ACCOUNTING}"
 
-REPORT_PLAIN="CronAlarm ${STATUS_WORD}: ${ACCOUNTING} on ${HOSTNAME} (${DATE_TAG})"
+REPORT_PLAIN="CronAlarm ${STATUS_WORD}${COVERAGE_CLAUSE}: ${ACCOUNTING} on ${HOSTNAME} (${DATE_TAG})"
 
 if [ "$FAILED" -gt 0 ] || [ "$TIMEOUTS" -gt 0 ]; then
     # One line per distinct job (FAIL and TIMEOUT together — both are
@@ -535,6 +600,25 @@ fi
 
 echo "$REPORT_DISCORD"
 
+# ─── Dry run stops HERE (v2.4) ───
+# --dry-run suppresses the DELIVERY side effects below: digest append,
+# bus POST, webhook, inbox write. A hand-run for inspection gets the
+# full report and none of the sends.
+#
+# Two writes above are NOT suppressed, and honesty about them beats a
+# false purity claim: (1) the missed-run helper records the crontab it
+# saw in $CRONALARM_DIR/crontab.seen.json the first time a changed
+# crontab is observed — a dry run on a crontab-change day arms that
+# floor early, which is truthful (the crontab really was seen then) and
+# only ever yields MORE coverage; (2) the re-verify pass runs commands
+# from the read-only allowlist, whose whole contract is "re-running
+# cannot change anything". Neither delivers a report to a reader, which
+# is what --dry-run is for.
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[DRY RUN — no delivery attempted, no digest appended, no inbox file written]"
+    exit 0
+fi
+
 # ── Delivery ─────────────────────────────────────────────────────────
 # TWO DEFECTS WERE FIXED HERE in 1.1, and both had to be — otherwise the
 # same bug gets rebuilt in every new pipe:
@@ -564,16 +648,27 @@ SEND_FAILED=0
 # delivery failures are never quiet here.
 if [ "$STATUS_WORD" = "ALL CLEAR" ]; then
 CRONREPORT_TEXT="$REPORT_DISCORD" GREEN_DIGEST="$GREEN_DIGEST" \
+MISSED_STATE="$MISSED_STATE" EXPECTED_SLOTS="$EXPECTED_SLOTS" SLOT_UNIVERSE="$SLOT_UNIVERSE" \
 python3 - "$STATUS_WORD" "$DATE_TAG" "$HOSTNAME" "$ACCOUNTING" <<'PY' || SEND_FAILED=1
 import json, os, sys
 from datetime import datetime
 
 status, date_tag, host, accounting = sys.argv[1:5]
+# Coverage travels as a STRUCTURED field next to status, not just inside the
+# free-text report: a reader keying on status must not get the verdict with
+# its scope stripped (Opie #3011 obs 2 — "0 missed" at 17% coverage). null
+# when the missed-run check could not run, so absence is legible as unknown.
+if os.environ.get("MISSED_STATE") == "KNOWN":
+    coverage = {"assessed": int(os.environ.get("EXPECTED_SLOTS", 0)),
+                "universe": int(os.environ.get("SLOT_UNIVERSE", 0))}
+else:
+    coverage = None
 line = json.dumps({
     "ts": datetime.now().isoformat(timespec="seconds"),
     "watcher": "cron-report",
     "subject": f"cronalarm-daily-report-{date_tag}-{status.lower().replace(' ', '-')}",
     "body": {"host": host, "date": date_tag, "status": status,
+             "missed_check_coverage": coverage,
              "accounting": accounting,
              "report": os.environ.get("CRONREPORT_TEXT", "")},
 })
@@ -594,11 +689,19 @@ else
 # The report travels in the environment, not on stdin: stdin is already
 # carrying the Python script itself via the heredoc.
 CRONREPORT_TEXT="$REPORT_DISCORD" \
+MISSED_STATE="$MISSED_STATE" EXPECTED_SLOTS="$EXPECTED_SLOTS" SLOT_UNIVERSE="$SLOT_UNIVERSE" \
 python3 - "$BUS_URL" "$BUS_TO" "$STATUS_WORD" "$DATE_TAG" "$HOSTNAME" "$TOTAL" "$PASSED" "$FAILED" "$TIMEOUTS" "$IN_FLIGHT" "$STILL_FAILING" <<'PY' || SEND_FAILED=1
 import json, os, sys, urllib.request, urllib.error
 
 bus, bus_to, status, date_tag, host, total, passed, failed, timeouts, in_flight, still_failing = sys.argv[1:12]
 report = os.environ.get("CRONREPORT_TEXT", "")
+# Coverage as a structured sibling of status (see green-digest note above):
+# a bus consumer keying on status gets the scope with it, not only in prose.
+if os.environ.get("MISSED_STATE") == "KNOWN":
+    coverage = {"assessed": int(os.environ.get("EXPECTED_SLOTS", 0)),
+                "universe": int(os.environ.get("SLOT_UNIVERSE", 0))}
+else:
+    coverage = None
 
 payload = json.dumps({
     # from: cron-report, a machine identity: automated traffic must not
@@ -607,6 +710,7 @@ payload = json.dumps({
     "subject": f"cronalarm-daily-report-{date_tag}-{status.lower().replace(' ', '-')}",
     "body": {
         "host": host, "date": date_tag, "status": status,
+        "missed_check_coverage": coverage,
         "total": int(total), "passed": int(passed),
         "failed": int(failed), "timeouts": int(timeouts),
         "in_flight_at_report_time": int(in_flight),
@@ -621,7 +725,7 @@ payload = json.dumps({
 req = urllib.request.Request(bus, data=payload, method="POST", headers={
     "Content-Type": "application/json",
     # Never omit this again. See the comment block above.
-    "User-Agent": "CronAlarmReport/2.1",
+    "User-Agent": "CronAlarmReport/2.4",
 })
 try:
     with urllib.request.urlopen(req, timeout=15) as r:
@@ -646,7 +750,7 @@ msg = json.dumps({"content": os.environ.get("CRONREPORT_TEXT", "")[:2000]})
 req = urllib.request.Request(sys.argv[1], data=msg.encode(), method="POST", headers={
     "Content-Type": "application/json",
     # Discord/Cloudflare 403s urllib's default user-agent — must send a real one
-    "User-Agent": "CronAlarmReport/2.1",
+    "User-Agent": "CronAlarmReport/2.4",
 })
 try:
     with urllib.request.urlopen(req, timeout=15) as r:

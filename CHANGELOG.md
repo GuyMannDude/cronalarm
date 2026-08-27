@@ -1,5 +1,33 @@
 # CronAlarm Changelog
 
+## 2.4 — 2026-08-27 — A report script with no argument guard treats `--help` as "deliver now"; and a verdict without its coverage reads as full coverage
+
+**Problem 1.** `cronalarm-report.sh` ignored unknown arguments, so *any*
+invocation — including an exploratory `--help` — composed the full daily
+report and delivered it to every configured channel. On 2026-08-27 a
+hand `--help` POSTed a stray daily report to the bus 22.5 hours before
+the real one. A script whose every run has side effects must refuse
+invocations it does not recognize, before doing anything at all.
+
+**Fix 1.** Argument guard first thing in the script: `-h`/`--help`
+prints usage and exits 0; any unrecognized argument prints usage and
+exits 2 — in both cases nothing is composed and nothing is sent. New
+`--dry-run` composes and prints the full report, then stops before
+every side effect (no digest append, no bus POST, no webhook, no inbox
+file) — hand-runs for inspection are legitimate and now have a lane.
+
+**Problem 2.** The missed-run check reports how many scheduled slots it
+could actually assess (on a young schedule floor, 157 of 877), but the
+ratio sat in a mid-report accounting clause while the headline said
+"0 missed" — a skimming reader concludes *nothing was missed* when the
+true claim is *nothing was missed among the 18% we can prove*.
+
+**Fix 2.** The coverage ratio moves into the Status headline itself —
+`ALL CLEAR [missed-run check covered 157 of 877 slots, 17%]` — on every
+report where the check ran. A verdict travels with its scope; when the
+check did not run, the headline already says so and no coverage number
+is invented.
+
 ## 2.3 — 2026-08-26 — A warning that only prints and exits 0 reaches nobody
 
 **Problem.** The example monitor's `warn_check` class printed `⚠️` and
