@@ -5,7 +5,10 @@
 #
 #  Runs at 11 PM daily. Reads today's log and reports which jobs
 #  passed, failed, recovered — and which scheduled runs never
-#  happened at all.
+#  happened at all. Also surfaces non-critical warnings: any job may
+#  append lines to $CRONALARM_WARN_DIR/YYYY-MM-DD.log (default
+#  ~/.cronalarm/warnings/) and they appear in this report — warnings
+#  never page, but they no longer evaporate either (v2.3).
 #
 #  Delivery (all optional, all config-driven — see ~/.cronalarm/env):
 #    - Local inbox file          — always written, the durability anchor
@@ -43,6 +46,7 @@ REPORT_WEBHOOK="${CRONALARM_REPORT_WEBHOOK:-}"    # Discord webhook for the dail
                                                   # so alert channels stay skim-free)
 GREEN_DIGEST="${CRONALARM_GREEN_DIGEST:-$CRONALARM_DIR/green-digest.jsonl}"
 GHA_STATE_FILE="${CRONALARM_GHA_STATE_FILE:-}"    # empty = GitHub Actions section skipped
+WARN_DIR="${CRONALARM_WARN_DIR:-$CRONALARM_DIR/warnings}"  # jobs append non-critical warnings to $WARN_DIR/YYYY-MM-DD.log; surfaced daily (v2.3)
 REVERIFY_MAP="${CRONALARM_REVERIFY_MAP:-$CRONALARM_DIR/reverify.map}"
 # cd+pwd, not `readlink -f`: BSD readlink has no -f, and the helper is
 # installed (or symlinked) alongside this script in both supported layouts.
@@ -384,6 +388,30 @@ else
     ACCOUNTING="${PASSED} passed + ${FAILED} failed + ${TIMEOUTS} timeout + ${IN_FLIGHT} in flight at report time = ${TOTAL} started${MISSED_CLAUSE}; ${STILL_FAILING} job(s) still red at report time"
 fi
 
+# ── Warnings surface (v2.3) ──────────────────────────────────────────
+# A warn-class check that prints ⚠️ and exits 0 reaches nobody: CronAlarm
+# alerts on exit codes, so its warnings evaporated on green days (found in
+# the 2026-08 guard-audience audit: "warn_check class reaches nobody").
+# Contract: any job may APPEND lines to $WARN_DIR/YYYY-MM-DD.log; this
+# report surfaces today's file. Warnings never page and never make a day
+# red — but a warnings-only day is AMBER and goes to the configured
+# channels, because a warning with no reader is not a warning.
+WARN_FILE="$WARN_DIR/${DATE_TAG}.log"
+WARN_COUNT=0
+if [ -s "$WARN_FILE" ]; then
+    # 2>/dev/null: an unreadable file (cross-user WARN_DIR) must read as
+    # zero, not crash the arithmetic below. NOT `|| echo 0` — grep -c
+    # prints its 0 before exiting 1, and that idiom re-creates the v1.1
+    # "0\n0" counting bug documented above.
+    WARN_COUNT=$(grep -c . "$WARN_FILE" 2>/dev/null)
+    [ -n "$WARN_COUNT" ] || WARN_COUNT=0
+fi
+if [ "$WARN_COUNT" -gt 0 ] && [ "$STATUS_WORD" = "ALL CLEAR" ]; then
+    EMOJI="🟡"
+    STATUS_WORD="WARNINGS"
+    ACCOUNTING="${ACCOUNTING}; ${WARN_COUNT} warning line(s), zero failures"
+fi
+
 # Build reports for each channel
 REPORT_DISCORD="${EMOJI} **CronAlarm Daily Report — ${HOSTNAME}**
 **Date:** ${DATE_TAG}
@@ -413,6 +441,7 @@ elif [ "$MISSED_TOTAL" -gt 0 ]; then
 ${MISSED_LINES}"
     REPORT_PLAIN="${REPORT_PLAIN} ${MISSED_TOTAL} missed slots (${MISSED_UNEXPLAINED} unexplained)."
 fi
+
 
 # ── GitHub Actions standing state (optional, Opie #2429) ─────────────
 # Enabled by pointing CRONALARM_GHA_STATE_FILE at a retention jsonl kept
@@ -478,6 +507,30 @@ PY
     REPORT_DISCORD="${REPORT_DISCORD}
 **GitHub Actions** [$(basename "$GHA_STATE_FILE")]: ${GHA_LINE}"
     REPORT_PLAIN="${REPORT_PLAIN} GHA: $(printf '%s' "$GHA_LINE" | head -1)."
+fi
+
+# Warnings section LAST on purpose: the Discord sender truncates at 2000
+# chars from the END, so whatever sits at the tail is what a heavy day
+# cuts. Warnings are the lowest-severity section — they must be the first
+# thing truncated, never the GHA standing state above (whose own contract
+# is "an ack must be visible while it lasts"). The inbox copy below
+# always carries the full file.
+if [ "$WARN_COUNT" -gt 0 ]; then
+    # grep . on BOTH sides: WARN_COUNT counts non-blank lines, so the
+    # display must select the same set — a raw tail on a file with blank
+    # lines would silently render fewer warnings than the cap admits.
+    # The file is in append order (writers that dedup write first-seen
+    # first); the cap keeps the tail and NAMES the omission + full path,
+    # so nothing is silently lost either way.
+    WARN_LINES=$(grep . "$WARN_FILE" | tail -n 30)
+    if [ "$WARN_COUNT" -gt 30 ]; then
+        WARN_LINES="[... $((WARN_COUNT - 30)) earlier line(s) omitted — full file: ${WARN_FILE}]
+${WARN_LINES}"
+    fi
+    REPORT_DISCORD="${REPORT_DISCORD}
+⚠️ **${WARN_COUNT} warning line(s)** — non-critical by the emitting job's own ruling, surfaced here because warnings never page:
+${WARN_LINES}"
+    REPORT_PLAIN="${REPORT_PLAIN} ${WARN_COUNT} warning line(s)."
 fi
 
 echo "$REPORT_DISCORD"
@@ -627,6 +680,16 @@ REPORT_FILE="$INBOX_DIR/CRON-REPORT-${DATE_TAG}.md"
     echo "- **Missed slots:** $MISSED_TOTAL (${MISSED_UNEXPLAINED} unexplained, ${MISSED_DOWN} in scheduler outages, check state: $MISSED_STATE)"
     echo "- **Scheduled slots assessed:** $EXPECTED_SLOTS (${UNASSESSABLE} not assessable)"
     echo "- **Accounting:** $ACCOUNTING"
+    if [ "$WARN_COUNT" -gt 0 ]; then
+        # The inbox is the durability anchor — full warnings file, no cap.
+        # Without this, a warnings-only day on an inbox-only install would
+        # flip amber yet persist the warning text NOWHERE (v2.3 review).
+        echo ""
+        echo "## Warnings (${WARN_COUNT} non-blank line(s), non-critical)"
+        echo '```'
+        cat "$WARN_FILE" 2>/dev/null || echo "[warnings file unreadable: $WARN_FILE]"
+        echo '```'
+    fi
     echo ""
     echo "## Full Log"
     echo '```'

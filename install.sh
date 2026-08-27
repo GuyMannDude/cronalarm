@@ -144,6 +144,11 @@ export CRONALARM_INBOX_DIR="\$HOME/.cronalarm/inbox"
 # Where ALL CLEAR days append their one-line digest entry.
 # export CRONALARM_GREEN_DIGEST="\$HOME/.cronalarm/green-digest.jsonl"
 
+# Warnings surface (v2.3): jobs append non-critical warning lines to
+# \$CRONALARM_WARN_DIR/YYYY-MM-DD.log; the daily report shows them and a
+# warnings-only day goes amber. Warnings never page.
+# export CRONALARM_WARN_DIR="\$HOME/.cronalarm/warnings"
+
 # Read-only re-verify map: jobs the report may safely re-run right before
 # composing, so a morning failure that's been fixed since is labeled
 # honestly. One line per job: job name, a TAB, the command. Only list
@@ -177,6 +182,7 @@ cat > "$CRONALARM_DIR/rotate-logs.sh" << 'ROTEOF'
 # Keep only 30 days of cron logs
 find "$HOME/.cronalarm/logs" -name "*.log" -mtime +30 -delete 2>/dev/null
 find "$HOME/.cronalarm/inbox" -name "CRON-*" -mtime +30 -delete 2>/dev/null
+find "$HOME/.cronalarm/warnings" -name "*.log" -mtime +30 -delete 2>/dev/null
 echo "Log rotation complete"
 ROTEOF
 chmod +x "$CRONALARM_DIR/rotate-logs.sh"

@@ -1,5 +1,25 @@
 # CronAlarm Changelog
 
+## 2.3 — 2026-08-26 — A warning that only prints and exits 0 reaches nobody
+
+**Problem.** The example monitor's `warn_check` class printed `⚠️` and
+exited 0 — and CronAlarm alerts on exit codes, so on an otherwise-green
+day those warnings evaporated: no alert (correct — they are
+non-critical), but also no reader, ever. A 2026-08 guard-audience audit
+("who is told when this fires?") found the entire class delivered to
+nobody. Detection was never the problem; delivery was.
+
+**Fix.** A warnings surface with a file contract: any job may append
+lines to `$CRONALARM_WARN_DIR/YYYY-MM-DD.log` (default
+`~/.cronalarm/warnings/`). The daily report shows today's warning lines
+(tail-biased cap of 30, omissions counted and named — same
+which-end-matters rule as v2.2). Warnings never page and never make a
+day red, but a warnings-only day is now AMBER (`WARNINGS`) and goes to
+the configured report channels instead of the silent green digest — a
+warning with no reader is not a warning. The example monitor persists
+its `warn_check` misses there, dedup'd per day so a 15-minute cadence
+cannot write 96 copies of one outage.
+
 ## 2.2 — 2026-08-25 — A failing job's captured output was cut from the wrong end, so the error that caused the failure was never written
 
 **Problem.** The wrapper captured the last 50 lines of a failed job's

@@ -12,7 +12,7 @@
   "name": "CronAlarm",
   "tagline": "The cron wrapper that screams when things break — no silent failures, ever.",
   "summary": "CronAlarm wraps every cron job with timeout protection, output capture, and multi-channel alerting. When a job fails or hangs, you hear about it instantly via Discord webhook. A daily report shows what passed, what failed, what recovered — and which scheduled runs never happened at all (a rebooted scheduler swallows slots silently; CronAlarm names them). Bash + python3, no daemon, no server, no database. Designed for the 3 AM backup that breaks silently and goes unnoticed until the data is gone.",
-  "version": "2.2",
+  "version": "2.3",
   "license": "MIT",
   "homepage": "https://github.com/GuyMannDude/cronalarm",
   "source": "https://github.com/GuyMannDude/cronalarm",
@@ -39,7 +39,7 @@
       {"command": "cronalarm \"Job Name\" <command...>", "purpose": "Run a command under CronAlarm's protection. Job name appears in alerts + summaries."},
       {"command": "bash install.sh", "purpose": "Interactive installer. Walks through channel setup (Discord) and writes config to ~/.cronalarm/env."},
       {"command": "bash install.sh --yes", "purpose": "Unattended install — channels configured via env vars (CRONALARM_DISCORD_WEBHOOK, etc.)."},
-      {"command": "cronalarm-report.sh", "purpose": "Daily report. Reads today's log, checks for missed slots, and delivers to the configured channels (inbox always; Discord and/or JSON endpoint on non-green days). Typically run via cron at 11 PM."},
+      {"command": "cronalarm-report.sh", "purpose": "Daily report. Reads today's log, checks for missed slots, surfaces warning lines from the warnings dir (v2.3), and delivers to the configured channels (inbox always; Discord and/or JSON endpoint on non-green days — a warnings-only day counts as non-green/amber). Typically run via cron at 11 PM."},
       {"command": "cronalarm-missed-runs.py [--date YYYY-MM-DD] [--json]", "purpose": "Report scheduled cron slots that produced no run at all, from the live crontab + the day's log + the scheduler's service journal. A reader — never triggers or backfills."}
     ],
     "config_env_vars": [
@@ -52,6 +52,7 @@
       {"name": "CRONALARM_BUS_URL", "purpose": "JSON POST endpoint for the daily report on non-green days (message bus / automation). Unset = skipped — the report never POSTs at an empty string."},
       {"name": "CRONALARM_BUS_TO", "purpose": "Recipient field in the JSON payload. Default: ops."},
       {"name": "CRONALARM_GREEN_DIGEST", "purpose": "Where ALL CLEAR days append their one-line digest entry. Default: $CRONALARM_DIR/green-digest.jsonl."},
+      {"name": "CRONALARM_WARN_DIR", "purpose": "Directory where jobs append non-critical warning lines (one file per day, YYYY-MM-DD.log); the daily report surfaces them and a warnings-only day is amber, not green. Warnings never page. Default: $CRONALARM_DIR/warnings."},
       {"name": "CRONALARM_REVERIFY_MAP", "purpose": "Tab-separated 'job name<TAB>command' allowlist of read-only checks the report may re-run before composing. Default: $CRONALARM_DIR/reverify.map; absent = nothing re-verified, reds keep their honest stale label."},
       {"name": "CRONALARM_GHA_STATE_FILE", "purpose": "Retention jsonl written by a CI-watching job; enables a GitHub Actions section in the daily report. Unset = section skipped."},
       {"name": "CRONALARM_MISSED_HELPER", "purpose": "Path to cronalarm-missed-runs.py. Default: the copy next to the report script."},

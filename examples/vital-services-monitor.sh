@@ -78,6 +78,19 @@ if [ -n "$FAILURES" ]; then
 elif [ -n "$WARNINGS" ]; then
     echo "⚠️  Warnings (non-critical):"
     echo -e "$WARNINGS"
+    # Persist for the daily report (v2.3): an exit-0 warning reaches no
+    # alerting path on its own, so drop it where cronalarm-report.sh
+    # looks. Dedup'd per day — a 15-minute cadence must not write 96
+    # copies of the same outage.
+    WARN_DIR="${CRONALARM_WARN_DIR:-$HOME/.cronalarm/warnings}"
+    mkdir -p "$WARN_DIR"
+    WARN_FILE="$WARN_DIR/$(date '+%Y-%m-%d').log"
+    # Timestamp records WHEN each warning first fired; the dedup key is the
+    # message WITHOUT it, or every cadence tick would defeat the dedup.
+    echo -e "$WARNINGS" | grep . | while IFS= read -r w; do
+        msg="$(basename "$0"): ${w#- }"
+        grep -qF -- "$msg" "$WARN_FILE" 2>/dev/null || echo "$(date '+%H:%M') $msg" >> "$WARN_FILE"
+    done
     exit 0
 else
     echo "🟢 All systems operational."

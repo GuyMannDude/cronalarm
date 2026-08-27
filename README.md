@@ -117,6 +117,11 @@ export CRONALARM_REPORT_WEBHOOK="https://discord.com/api/webhooks/..."
 # Or/and a JSON POST endpoint (message bus, automation):
 # export CRONALARM_BUS_URL="https://your-endpoint/..."
 # export CRONALARM_BUS_TO="ops"
+
+# Warnings surface (v2.3): jobs append non-critical warning lines to
+# $CRONALARM_WARN_DIR/YYYY-MM-DD.log and the daily report shows them.
+# Warnings never page; a warnings-only day is AMBER, not green.
+# export CRONALARM_WARN_DIR="$HOME/.cronalarm/warnings"
 ```
 
 The report also supports live re-verification of read-only checks
