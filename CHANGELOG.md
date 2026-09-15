@@ -1,5 +1,25 @@
 # CronAlarm Changelog
 
+## 2.5 — 2026-09-14 — A failure that only shouts where nobody is looking has not been reported
+
+**Problem.** A failed job screamed on two channels — the Discord webhook
+and the inbox file — and both need somebody already looking at IGOR.
+Agents in this fleet read the *bus* at every wake, and the bus leg
+existed only as a per-line `|| cron-fail-bus.py` wrapper bolted onto
+five of thirty-odd crontab entries. A Monday-morning `Repo Drift Check`
+failure (2026-09-14) reached Discord and the inbox and nobody's wake.
+
+**Fix.** The failure path itself now POSTs one envelope to
+`CRONALARM_FAIL_BUS_TO` via `CRONALARM_BUS_URL` (both unset = no bus
+leg, as before), sent as `cron-report`, CronAlarm's machine identity.
+The envelope carries the job, exit code, time and the *paths* to the
+failure file and day log — never the job's output, which may hold keys.
+One envelope per job per day: a marker in `bus-sent/` is written only
+after a 2xx, so a bus outage retries on the next failure rather than
+silencing itself; markers older than a week are cleared by the same
+code. The log gets a `BUS:` line on send, on dedup, or a `WARN: bus
+alert failed`. The per-line wrappers are retired.
+
 ## 2.4 — 2026-08-27 — A report script with no argument guard treats `--help` as "deliver now"; and a verdict without its coverage reads as full coverage
 
 **Problem 1.** `cronalarm-report.sh` ignored unknown arguments, so *any*

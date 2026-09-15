@@ -51,6 +51,9 @@ LOG_DIR="$CRONALARM_DIR/logs"
 TIMEOUT="${CRONALARM_TIMEOUT:-300}"
 HOSTNAME=$(hostname)
 INBOX_DIR="${CRONALARM_INBOX_DIR:-$CRONALARM_DIR/inbox}"
+BUS_URL="${CRONALARM_BUS_URL:-}"          # JSON POST endpoint (disco-bus /mesh/ping); empty = no bus leg
+FAIL_BUS_TO="${CRONALARM_FAIL_BUS_TO:-}"  # agent that gets every failed job on the bus; empty = no bus leg
+BUS_SENT_DIR="$CRONALARM_DIR/bus-sent"    # one marker per job per day: chronic failures send once
 
 # ─── Arguments ───
 if [ $# -lt 2 ]; then
@@ -200,5 +203,60 @@ SCREAM_FILE="$INBOX_DIR/CRON-FAILURE-${DATE_TAG}.md"
     echo '```'
     echo ""
 } >> "$SCREAM_FILE"
+
+# ── Bus: put the failure in front of the on-call agent's next wake ────
+# Discord and the inbox file both live on IGOR and both need somebody
+# already looking. Agents read the bus at every wake (Guy, 2026-09-14:
+# "bus messages should have been waiting for me to wake"). ONE envelope
+# per job per day — a */5 job that stays red must not bury the inbox.
+# The marker is written on DELIVERY only, so a bus outage retries on the
+# next failure instead of silencing itself. No stdout/stderr crosses the
+# bus (jobs handle keys); the envelope carries the PATH to the failure
+# file. Sent as cron-report — CronAlarm's own machine identity — never
+# as an agent.
+if [ -n "$BUS_URL" ] && [ -n "$FAIL_BUS_TO" ]; then
+    JOB_SLUG=$(printf '%s' "$JOB_NAME" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '-' | tr -s '-' | sed 's/^-//;s/-$//')
+    BUS_MARK="$BUS_SENT_DIR/${JOB_SLUG}-${DATE_TAG}"
+    if [ -e "$BUS_MARK" ]; then
+        echo "[$END_TIMESTAMP] BUS:   $JOB_NAME already on the bus today — not repeated" >> "$LOG_FILE"
+    else
+        mkdir -p "$BUS_SENT_DIR"
+        # Markers older than a week are spent; this feature made them, it clears them.
+        find "$BUS_SENT_DIR" -type f -mtime +7 -delete 2>/dev/null
+        if CRONALARM_JOB="$JOB_NAME" CRONALARM_EXIT="${EXIT_CODE}${TIMEOUT_FLAG}" \
+           CRONALARM_FAILURE_FILE="$SCREAM_FILE" CRONALARM_LOG_FILE="$LOG_FILE" \
+           python3 - "$BUS_URL" "$FAIL_BUS_TO" "$HOSTNAME" "$END_TIMESTAMP" "$JOB_SLUG" <<'PY' >> "$LOG_FILE" 2>&1
+import json, os, sys, urllib.request, urllib.error
+bus, to, host, when, slug = sys.argv[1:6]
+payload = json.dumps({
+    "mesh_version": "0.5", "from": "cron-report", "to": to,
+    "subject": f"cronalarm-job-failed-{slug}",
+    "body": {
+        "note": "[PROBED] Automated: sent by CronAlarm's failure hook, not by the job. No agent has looked at it yet.",
+        "job": os.environ["CRONALARM_JOB"], "host": host,
+        "exit": os.environ["CRONALARM_EXIT"], "failed_at": when,
+        "output": "not included on purpose (jobs handle keys) — read the files below",
+        "failure_file": os.environ["CRONALARM_FAILURE_FILE"],
+        "log_file": os.environ["CRONALARM_LOG_FILE"],
+    },
+}).encode()
+req = urllib.request.Request(bus, data=payload, method="POST", headers={
+    "Content-Type": "application/json", "User-Agent": "CronAlarm/2.5"})
+try:
+    with urllib.request.urlopen(req, timeout=15) as r:
+        if r.status >= 300:
+            print(f"  bus alert rejected: HTTP {r.status}"); sys.exit(1)
+        print(f"  bus -> {to}: {r.read(200).decode(errors='replace').strip()}")
+except (urllib.error.URLError, OSError) as e:
+    print(f"  bus alert failed: {e}"); sys.exit(1)
+PY
+        then
+            echo "[$END_TIMESTAMP] BUS:   failure sent to $FAIL_BUS_TO" >> "$LOG_FILE"
+            : > "$BUS_MARK"
+        else
+            echo "[$END_TIMESTAMP] WARN: bus alert failed" >> "$LOG_FILE"
+        fi
+    fi
+fi
 
 exit $EXIT_CODE
