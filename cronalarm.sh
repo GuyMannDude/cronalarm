@@ -220,9 +220,12 @@ if [ -n "$BUS_URL" ] && [ -n "$FAIL_BUS_TO" ]; then
     if [ -e "$BUS_MARK" ]; then
         echo "[$END_TIMESTAMP] BUS:   $JOB_NAME already on the bus today — not repeated" >> "$LOG_FILE"
     else
-        mkdir -p "$BUS_SENT_DIR"
+        # Guarded: set -e would abort HERE on a failed mkdir/find and skip
+        # the send, the log line and exit $EXIT_CODE (same trap as the Discord leg).
+        mkdir -p "$BUS_SENT_DIR" || true
         # Markers older than a week are spent; this feature made them, it clears them.
-        find "$BUS_SENT_DIR" -type f -mtime +7 -delete 2>/dev/null
+        # Two failures in one minute race this sweep and GNU find returns 1 on a vanished file.
+        find "$BUS_SENT_DIR" -type f -mtime +7 -delete 2>/dev/null || true
         if CRONALARM_JOB="$JOB_NAME" CRONALARM_EXIT="${EXIT_CODE}${TIMEOUT_FLAG}" \
            CRONALARM_FAILURE_FILE="$SCREAM_FILE" CRONALARM_LOG_FILE="$LOG_FILE" \
            python3 - "$BUS_URL" "$FAIL_BUS_TO" "$HOSTNAME" "$END_TIMESTAMP" "$JOB_SLUG" <<'PY' >> "$LOG_FILE" 2>&1
@@ -252,7 +255,7 @@ except (urllib.error.URLError, OSError) as e:
 PY
         then
             echo "[$END_TIMESTAMP] BUS:   failure sent to $FAIL_BUS_TO" >> "$LOG_FILE"
-            : > "$BUS_MARK"
+            : > "$BUS_MARK" || echo "[$END_TIMESTAMP] WARN: bus marker not written ($BUS_MARK)" >> "$LOG_FILE"
         else
             echo "[$END_TIMESTAMP] WARN: bus alert failed" >> "$LOG_FILE"
         fi
