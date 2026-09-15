@@ -205,7 +205,7 @@ SCREAM_FILE="$INBOX_DIR/CRON-FAILURE-${DATE_TAG}.md"
 } >> "$SCREAM_FILE"
 
 # ── Bus: put the failure in front of the on-call agent's next wake ────
-# Discord and the inbox file both live on IGOR and both need somebody
+# Discord and the inbox file both live on the host and both need somebody
 # already looking. Agents read the bus at every wake (Guy, 2026-09-14:
 # "bus messages should have been waiting for me to wake"). ONE envelope
 # per job per day — a */5 job that stays red must not bury the inbox.

@@ -3,7 +3,7 @@
 ## 2.5 — 2026-09-14 — A failure that only shouts where nobody is looking has not been reported
 
 **Problem.** A failed job screamed on two channels — the Discord webhook
-and the inbox file — and both need somebody already looking at IGOR.
+and the inbox file — and both need somebody already looking at the host.
 Agents in this fleet read the *bus* at every wake, and the bus leg
 existed only as a per-line `|| cron-fail-bus.py` wrapper bolted onto
 five of thirty-odd crontab entries. A Monday-morning `Repo Drift Check`
