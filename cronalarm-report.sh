@@ -546,12 +546,15 @@ try:
     hhmm = os.environ.get("CRONALARM_GHA_WATCH_HHMM", "")
     summary = (f"{d.get('workflows', '?')} workflows: "
                f"{len(d.get('red', []))} red, "
+               f"{len(d.get('open_from_others', []))} open issues/PRs from others, "
                f"{len(d.get('acknowledged', []))} acknowledged")
     if not hhmm:
         print(f"{summary} — as of {d['at'][:16]} (no schedule configured "
               f"to judge freshness; set CRONALARM_GHA_WATCH_HHMM)")
         for r in d.get("acknowledged", []):
             print(f"  ACK {r}")
+        for r in d.get("open_from_others", []):
+            print(f"  OPEN {r}")
     else:
         h, m = (int(x) for x in hhmm.split(":"))
         now_local = datetime.now().astimezone()
@@ -565,6 +568,8 @@ try:
             print(summary)
             for r in d.get("acknowledged", []):
                 print(f"  ACK {r}")
+            for r in d.get("open_from_others", []):
+                print(f"  OPEN {r}")
 except Exception as e:
     print(f"unreadable ({e})")
 PY
