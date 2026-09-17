@@ -1,5 +1,32 @@
 # CronAlarm Changelog
 
+## 2.6 — 2026-09-17 — A crontab edit no longer blinds the missed-run guard for the rest of the day
+
+**Problem.** The missed-run check only asserts slots at or after a floor
+that proves the schedule existed. On a host where the spool mtime is
+unreadable, that floor came from a seen-record the guard wrote itself —
+at its own nightly run. An afternoon crontab edit therefore set the
+floor to 23:00 and every slot of the day landed as "unassessable":
+`MISSED CHECK NOT ARMED, 0 of 878`, twice in three days (2026-09-14,
+09-16), each on a day the crontab was edited. The guard was blind on
+exactly the days a schedule is most likely to be wrong.
+
+**Fix.** `cronalarm.sh` refreshes the seen-record at every job start:
+a start is a post-write observation of the live crontab, so the floor
+now trails any edit — by anyone, through `crontab -e`, a script or an
+agent — by at most one job-start interval (five minutes on a host with
+a `*/5` job). Same record, same hash, atomic write, never fails the job.
+The guard's own write stays as the fallback for a host where nothing has
+started since the edit.
+
+Rejected on review: floor from the pre-write `crontab.autosnap-*` the
+write guard takes. That snapshot is taken before the operator confirms,
+so it marks an attempt, not a change — three snapshots on the reference
+host were byte-identical to the live table — and a denied write would
+have asserted slots against a table that never existed. Over-reporting
+is the unrecoverable direction for this tool. Pinned by
+`tests/test-missed-runs-floor.py` (7 cases, writer and reader).
+
 ## 2.5 — 2026-09-14 — A failure that only shouts where nobody is looking has not been reported
 
 **Problem.** A failed job screamed on two channels — the Discord webhook

@@ -45,6 +45,7 @@ from pathlib import Path
 TOLERANCE_S = 120
 LOG_DIR = Path(os.environ.get("CRONALARM_DIR",
                               str(Path.home() / ".cronalarm"))) / "logs"
+SPOOL = Path("/var/spool/cron/crontabs") / Path.home().name
 
 STAMP = r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] '
 
@@ -261,15 +262,24 @@ def crontab_source(path=None):
       3. a copy at ~/.cronalarm/crontab whose CONTENT matches the live
          crontab (a stale copy's mtime would fabricate misses for jobs
          added since, so a mismatched copy is skipped, not trusted);
-      4. a self-maintained seen-record: this tool stores a hash of the
-         crontab text with a timestamp. Unchanged text -> the recorded
-         time is the floor. Changed or first-seen -> the floor is NOW,
-         today's earlier slots are counted unassessable (and reported as
-         such — never as a clean zero), and from tomorrow the record
-         carries the floor. Without this, a machine where no mtime is
-         readable would silently drop EVERY slot forever — absence of
-         evidence rendering as a clean report, the exact defect this
-         tool exists to catch.
+      4. a seen-record (crontab.seen.json): a hash of the crontab text
+         with the time that text was first SEEN. Unchanged text -> the
+         recorded time is the floor. Changed or first-seen -> the floor
+         is NOW, today's earlier slots are counted unassessable (and
+         reported as such — never as a clean zero), and from tomorrow
+         the record carries the floor. Without this, a machine where no
+         mtime is readable would silently drop EVERY slot forever —
+         absence of evidence rendering as a clean report, the exact
+         defect this tool exists to catch.
+
+         The record is refreshed by cronalarm.sh at EVERY job start, not
+         only here: a "seen" is a post-write observation, so the floor
+         trails any edit — by anyone, through any path — by at most one
+         job-start interval. Before that, the floor was set by this
+         tool's nightly run, and an afternoon edit blinded the whole day
+         (2026-09-14 and 09-16: 0 of ~880 slots assessable). A pre-write
+         snapshot cannot do this job: it is taken before the write is
+         confirmed, so it marks an attempt, not a change.
     """
     if path:
         p = Path(path)
@@ -277,9 +287,8 @@ def crontab_source(path=None):
                 datetime.fromtimestamp(p.stat().st_mtime), "file-mtime")
     text = subprocess.run(["crontab", "-l"], capture_output=True,
                           text=True).stdout
-    spool = Path("/var/spool/cron/crontabs") / Path.home().name
     try:
-        return text, datetime.fromtimestamp(spool.stat().st_mtime), "spool-mtime"
+        return text, datetime.fromtimestamp(SPOOL.stat().st_mtime), "spool-mtime"
     except OSError:
         pass
     copy = Path(os.environ.get("CRONALARM_DIR",

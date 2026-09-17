@@ -76,6 +76,21 @@ TEMP_OUTPUT=$(mktemp)
 # ─── Log start ───
 echo "[$TIMESTAMP] START: $JOB_NAME — $COMMAND" >> "$LOG_FILE"
 
+# ─── Crontab seen-record (floor for cronalarm-missed-runs.py) ───
+# Every job start is a post-write observation of the live crontab: record
+# the text's hash the first time it is seen, so the missed-run guard's
+# floor trails any edit by at most one job-start interval instead of by
+# a whole day (2.6). Never lets a job fail: the record is advisory.
+note_crontab_seen() {
+    local rec="$CRONALARM_DIR/crontab.seen.json" sha tmp
+    sha=$(crontab -l 2>/dev/null | sha256sum | cut -d' ' -f1)
+    grep -q "\"sha\": \"$sha\"" "$rec" 2>/dev/null && return 0
+    tmp=$(mktemp "$CRONALARM_DIR/.seen.XXXXXX") || return 0
+    printf '{"sha": "%s", "since": "%s"}' "$sha" "$(date '+%Y-%m-%dT%H:%M:%S')" > "$tmp" \
+        && mv -f "$tmp" "$rec"
+}
+note_crontab_seen || true
+
 # ─── Run with timeout ───
 START_SECONDS=$SECONDS
 EXIT_CODE=0
@@ -244,7 +259,7 @@ payload = json.dumps({
     },
 }).encode()
 req = urllib.request.Request(bus, data=payload, method="POST", headers={
-    "Content-Type": "application/json", "User-Agent": "CronAlarm/2.5"})
+    "Content-Type": "application/json", "User-Agent": "CronAlarm/2.6"})
 try:
     with urllib.request.urlopen(req, timeout=15) as r:
         if r.status >= 300:
