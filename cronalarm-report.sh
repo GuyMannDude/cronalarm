@@ -579,6 +579,40 @@ PY
     REPORT_PLAIN="${REPORT_PLAIN} GHA: $(printf '%s' "$GHA_LINE" | head -1)."
 fi
 
+# Mnemo Discord standing line (Opie #3794, CC 2026-09-24). Enabled by
+# CRONALARM_MNEMO_DISCORD_STATE pointing at the watcher's state.json;
+# unset skips the section. Printed EVERY night, quiet or not: a dead
+# watcher and a quiet public server look identical from the outside, so
+# the line names its own freshness — last poll older than 5 minutes is
+# STALE, never "0 new".
+MNEMO_DISCORD_STATE="${CRONALARM_MNEMO_DISCORD_STATE:-}"
+if [ -n "$MNEMO_DISCORD_STATE" ]; then
+    MD_LINE=$(MNEMO_DISCORD_STATE="$MNEMO_DISCORD_STATE" python3 - 2>&1 <<'PY'
+import json, os
+from datetime import datetime, timezone
+try:
+    d = json.load(open(os.environ["MNEMO_DISCORD_STATE"]))
+    at = datetime.fromisoformat(d["last_poll_at"])
+    age = (datetime.now(timezone.utc) - at).total_seconds()
+    n = d.get("posts_today", 0)
+    if age > 300:
+        print(f"STALE — watcher last polled {d['last_poll_at'][:16]}Z ({int(age//60)} min ago); today's count unverified")
+    elif d.get("error"):
+        print(f"BLIND — {d['error']} (polled {int(age)}s ago)")
+    else:
+        held = len(d.get("pending") or [])
+        print(f"{n} new post{'s' if n != 1 else ''} today, watcher alive (polled {int(age)}s ago)" + (f", {held} held for batch" if held else ""))
+except FileNotFoundError:
+    print("NO STATE FILE — watcher has never run")
+except Exception as e:
+    print(f"unreadable ({e})")
+PY
+)
+    REPORT_DISCORD="${REPORT_DISCORD}
+**Mnemo Discord** [$(basename "$MNEMO_DISCORD_STATE")]: ${MD_LINE}"
+    REPORT_PLAIN="${REPORT_PLAIN} MnemoDiscord: ${MD_LINE}."
+fi
+
 # Warnings section LAST on purpose: the Discord sender truncates at 2000
 # chars from the END, so whatever sits at the tail is what a heavy day
 # cuts. Warnings are the lowest-severity section — they must be the first
